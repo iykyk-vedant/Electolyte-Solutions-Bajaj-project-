@@ -141,7 +141,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
 
   // Form data state
   const [formData, setFormData] = useState<ConsumptionEntry>({
-    repairDate: '',
+    repairDate: new Date().toISOString().split('T')[0],
     testing: '',
     failure: '',
     status: '',
@@ -666,6 +666,14 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
       // Auto-increment SR No for easier batch processing
       handleSrNoIncrement();
 
+      // Clear specific fields for the next entry as requested by user
+      setFormData(prev => ({
+        ...prev,
+        analysis: '',
+        componentChange: ''
+      }));
+      setValidationResult('');
+
       // Keep the current form data but reset selection so user can find the next one
       setSelectedEntryId(null);
     } catch (error) {
@@ -820,7 +828,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
   const handleClearForm = () => {
     // Reset form data
     setFormData({
-      repairDate: '',
+      repairDate: new Date().toISOString().split('T')[0],
       testing: '',
       failure: '',
       status: '',

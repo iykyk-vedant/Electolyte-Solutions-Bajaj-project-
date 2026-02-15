@@ -6,21 +6,21 @@ import {
     updateConsolidatedDataEntry,
     updateConsolidatedDataEntryByProductSrNo,
     deleteConsolidatedDataEntry,
-    getNextSrNoForPartcode,
+    getGlobalNextSrNo,
     searchConsolidatedDataEntriesByPcb as searchByPcb
 } from '@/lib/pg-db';
 import { validateConsumption, formatValidatedComponents } from '@/lib/consumption-validation-service';
 
 function formatDateForDb(dateString: string | undefined | null): string | null {
     if (!dateString) return null;
-    
+
     // Check if date is in DD/MM/YYYY format
     const ddMmYyyyMatch = dateString.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
     if (ddMmYyyyMatch) {
         const [_, day, month, year] = ddMmYyyyMatch;
         return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
     }
-    
+
     return dateString;
 }
 
@@ -169,9 +169,9 @@ export async function deleteConsolidatedDataEntryAction(id: string) {
     }
 }
 
-export async function getNextSrNoForPartcodeAction(partCode: string) {
+export async function getGlobalNextSrNoAction() {
     try {
-        const nextSrNo = await getNextSrNoForPartcode(partCode);
+        const nextSrNo = await getGlobalNextSrNo();
         return { success: true, data: nextSrNo };
     } catch (error) {
         console.error('Error getting next SR No:', error);
