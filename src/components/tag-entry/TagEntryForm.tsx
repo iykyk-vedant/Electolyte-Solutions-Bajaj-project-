@@ -863,6 +863,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
                           disabled={isDcLocked}
                           className={`flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 h-9 transition-all ${isDcLocked ? 'bg-gray-100' : ''}`}
                           placeholder="Enter DC No." />
+                        <LockButton dcNo={newDcNo} partCode={newPartCode} />
                       </div>
                     </div>
                     <div className="space-y-1">
@@ -886,7 +887,20 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                onClick={() => {
+                  if (formData.dcNo) {
+                    navigator.clipboard.writeText(formData.dcNo);
+                    alert('DC Number copied to clipboard!');
+                  }
+                }}
+                title="Copy DC Number"
+              >
+                📋
+              </button>
+              <LockButton dcNo={formData.dcNo} partCode={formData.partCode} />
             </div>
           </div>
           <select
@@ -903,27 +917,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
                 <option key={`${dc}-${index}`} value={dc}>{dc}</option>
               ))}
           </select>
-
         </div>
-        <div className="space-y-1">
-          <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Part Code</label>
-          <select
-            name="partCode"
-            value={isDcLocked ? useLockStore.getState().lockedPartCode : (formData.partCode || '')}
-            onChange={handleChange}
-            disabled={isDcLocked}
-            className={`w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-9 transition-all ${isDcLocked ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-white'}`}
-          >
-            <option value="">Select Part Code</option>
-            {(dcPartCodes[isDcLocked ? useLockStore.getState().lockedDcNo : formData.dcNo] || [])
-              .filter(code => code != null && code !== '')
-              .map((code, index) => (
-                <option key={`${code}-${index}`} value={code}>{code}</option>
-              ))}
-          </select>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div className="space-y-1">
           <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Branch</label>
           <input
@@ -932,8 +926,9 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
             value={formData.branch || ''}
             onChange={handleChange}
             className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-9 transition-all bg-white" />
-
         </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div className="space-y-1">
           <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider">BCCD Name</label>
           <input
@@ -953,8 +948,6 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
             className={`w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-9 transition-all ${formData.partCode ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-white'}`}
             readOnly={!!formData.partCode} />
         </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div className="space-y-1">
           <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Product Sr No</label>
           <div className="flex shadow-sm rounded-md overflow-hidden">
@@ -969,6 +962,8 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
             </div>
           </div>
         </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div className="space-y-1">
           <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Date of Purchase</label>
           <input
@@ -988,7 +983,23 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
             onChange={handleChange}
             className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-9 transition-all bg-white" />
         </div>
-
+        <div className="space-y-1">
+          <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Part Code</label>
+          <select
+            name="partCode"
+            value={isDcLocked ? useLockStore.getState().lockedPartCode : (formData.partCode || '')}
+            onChange={handleChange}
+            disabled={isDcLocked || !!sessionPartCode}
+            className={`w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-9 transition-all ${isDcLocked || sessionPartCode ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-white'}`}
+          >
+            <option value="">Select Part Code</option>
+            {(dcPartCodes[isDcLocked ? useLockStore.getState().lockedDcNo : formData.dcNo] || [])
+              .filter(code => code != null && code !== '')
+              .map((code, index) => (
+                <option key={`${code}-${index}`} value={code}>{code}</option>
+              ))}
+          </select>
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div className="space-y-1">
