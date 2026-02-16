@@ -51,24 +51,14 @@ export async function addDcNumber(dcNo: string, partCodes: string[]) {
 }
 
 export async function saveConsolidatedDataEntry(data: any) {
-    const columns = Object.keys(data);
-    const colNames = columns.join(', ');
+    const columns = Object.keys(data).join(', ');
     const values = Object.values(data);
     const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
 
-    const updateClause = columns
-        .filter(col => col !== 'product_sr_no')
-        .map((col) => `${col} = EXCLUDED.${col}`)
-        .join(', ');
-
-    const query = `
-        INSERT INTO consolidated_data (${colNames}, updated_at) 
-        VALUES (${placeholders}, NOW()) 
-        ON CONFLICT (product_sr_no) 
-        DO UPDATE SET ${updateClause}, updated_at = NOW() 
-        RETURNING *`;
-
-    const result = await pool.query(query, values);
+    const result = await pool.query(
+        `INSERT INTO consolidated_data (${columns}, updated_at) VALUES (${placeholders}, NOW()) RETURNING *`,
+        values
+    );
     return result.rows[0];
 }
 
@@ -145,9 +135,10 @@ export async function checkComponentForPartCode(partCode: string, location: stri
     return (result.rowCount ?? 0) > 0;
 }
 
-export async function getGlobalNextSrNo() {
+export async function getNextSrNoForPartcode(partCode: string) {
     const result = await pool.query(
-        'SELECT MAX(CAST(sr_no AS INTEGER)) as max_sr FROM consolidated_data'
+        'SELECT MAX(CAST(sr_no AS INTEGER)) as max_sr FROM consolidated_data WHERE part_code = $1',
+        [partCode]
     );
     const nextSr = (result.rows[0]?.max_sr || 0) + 1;
     return String(nextSr).padStart(3, '0');

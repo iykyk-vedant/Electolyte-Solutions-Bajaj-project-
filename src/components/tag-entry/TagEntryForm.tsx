@@ -174,19 +174,22 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
 
           setSavedEntries(tagEntries);
 
-          // Set initial SR No based on global maximum from database
-          console.log('Loading global next SR No');
-          const { getGlobalNextSrNoAction } = await import('@/app/actions/consumption-actions');
-          const srNoResult = await getGlobalNextSrNoAction();
-          console.log('SR No result:', srNoResult);
-          if (srNoResult.success && srNoResult.data) {
-            console.log('Setting SR No to:', srNoResult.data);
-            setFormData(prev => ({
-              ...prev,
-              srNo: srNoResult.data as string
-            }));
+          // Set initial SR No based on Partcode from database
+          if (formData.partCode) {
+            console.log('Loading SR No for Partcode:', formData.partCode);
+            const { getNextSrNoForPartcodeAction } = await import('@/app/actions/consumption-actions');
+            const srNoResult = await getNextSrNoForPartcodeAction(formData.partCode);
+            console.log('SR No result:', srNoResult);
+            if (srNoResult.success && srNoResult.data) {
+              console.log('Setting SR No to:', srNoResult.data);
+              setFormData(prev => ({
+                ...prev,
+                srNo: srNoResult.data as string
+              }));
+            }
           } else {
-            console.log('Using default SR No: 001');
+            console.log('No DC Number, using default SR No: 001');
+            // Fallback to 001 if no DC Number
             setFormData(prev => ({
               ...prev,
               srNo: '001'
@@ -217,16 +220,18 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         const partCode = initialData.partCode || prev.partCode;
         let newSrNo = prev.srNo; // Default to current srNo
 
-        // Use database-based SR No generation (Global)
+        // Use database-based SR No generation
         const generateSrNoFromDb = async () => {
-          try {
-            const { getGlobalNextSrNoAction } = await import('@/app/actions/consumption-actions');
-            const srNoResult = await getGlobalNextSrNoAction();
-            if (srNoResult.success && srNoResult.data) {
-              return srNoResult.data;
+          if (partCode) {
+            try {
+              const { getNextSrNoForPartcodeAction } = await import('@/app/actions/consumption-actions');
+              const srNoResult = await getNextSrNoForPartcodeAction(partCode);
+              if (srNoResult.success && srNoResult.data) {
+                return srNoResult.data;
+              }
+            } catch (error) {
+              console.error('Error generating SR No from DB:', error);
             }
-          } catch (error) {
-            console.error('Error generating SR No from DB:', error);
           }
           return '001'; // Fallback
         };
@@ -297,14 +302,49 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     }
   }, [formData.partCode, formData.srNo, formData.mfgMonthYear]);
 
+  // Update serial number when part code changes
+  // Calculate next sequential number for the selected part code
+  useEffect(() => {
+    if (formData.partCode && !isDcLocked) { // Only update when not locked
+      // Find entries with the same part code
+      const partCodeEntries = savedEntries.filter(entry => entry.partCode === formData.partCode);
+
+      // Calculate next sequential number (1, 2, 3, ...) for this part code
+      const nextSrNo = partCodeEntries.length > 0
+        ? Math.max(...partCodeEntries.map(e => parseInt(e.srNo) || 0)) + 1
+        : 1;
+
+      setFormData(prev => ({
+        ...prev,
+        srNo: String(nextSrNo).padStart(3, '0')
+      }));
+    } else if (isDcLocked) {
+      // If locked, set DC No and partCode to the locked values
+      setFormData(prev => ({
+        ...prev,
+        dcNo: useLockStore.getState().lockedDcNo,
+        partCode: useLockStore.getState().lockedPartCode
+      }));
+    } else {
+      // If no part code is selected, reset to 001
+      setFormData(prev => ({
+        ...prev,
+        srNo: '001'
+      }));
+    }
+  }, [formData.partCode, savedEntries, isDcLocked]);
+
   // Sync with lock store when locked values change
   useEffect(() => {
     const unsub = useLockStore.subscribe((state) => {
       if (state.isDcLocked) {
         setFormData(prev => ({
           ...prev,
-          dcNo: state.lockedDcNo
+          dcNo: state.lockedDcNo,
+          partCode: state.lockedPartCode
         }));
+        // When DC is locked, the part code is controlled by the lock, not user selection
+        setUserSelectedPartCode(false);
       }
     });
 
@@ -318,8 +358,10 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       const lockState = useLockStore.getState();
       setFormData(prev => ({
         ...prev,
-        dcNo: lockState.lockedDcNo
+        dcNo: lockState.lockedDcNo,
+        partCode: lockState.lockedPartCode
       }));
+      setUserSelectedPartCode(false);
     }
   }, [isDcLocked]);
 
@@ -366,7 +408,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     } else {
       // Update locked values if lock is active and we're changing DC No or Part Code
       // But prevent changes to locked fields
-      if (isDcLocked && name === 'dcNo') {
+      if (isDcLocked && (name === 'dcNo' || name === 'partCode')) {
         // Don't update locked fields, keep the locked values
         return;
       }
@@ -484,7 +526,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       if (result.success) {
         console.log('SAVE SUCCESSFUL');
         alert('Entry saved successfully!');
-        handleClear(true); // Pass true to increment SR No
+        handleClear();
         setShowSavedList(true);
       } else {
         console.log('SAVE FAILED:', result.error);
@@ -555,20 +597,13 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     tagEntryEventEmitter.emit(TAG_ENTRY_EVENTS.ENTRY_DELETED, formData.id);
   };
 
-  const handleClear = (increment = false) => {
-    // Preserve the current SR No sequence, optionally increment it
-    let currentSrNo = formData.srNo || '001';
-
-    if (increment) {
-      const num = parseInt(currentSrNo);
-      if (!isNaN(num)) {
-        currentSrNo = String(num + 1).padStart(3, '0');
-      }
-    }
+  const handleClear = () => {
+    // Preserve the current SR No sequence, don't reset to '001'
+    const currentSrNo = formData.srNo || '001';
 
     setFormData({
       id: '',
-      srNo: currentSrNo, // Use the (possibly incremented) SR No
+      srNo: currentSrNo, // Keep current SR No
       dcNo: sessionDcNumber || '', // Preserve session DC Number
       branch: 'Mumbai',
       bccdName: 'BCCD-001',
@@ -576,7 +611,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       productSrNo: '',
       dateOfPurchase: '',
       complaintNo: '',
-      partCode: formData.partCode || sessionPartCode || '', // Preserve current Part Code
+      partCode: sessionPartCode || '', // Preserve session Part Code
       natureOfDefect: '',
       visitingTechName: '',
       mfgMonthYear: '',
@@ -874,12 +909,13 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
           <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Part Code</label>
           <select
             name="partCode"
-            value={formData.partCode || ''}
+            value={isDcLocked ? useLockStore.getState().lockedPartCode : (formData.partCode || '')}
             onChange={handleChange}
-            className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-9 transition-all bg-white"
+            disabled={isDcLocked}
+            className={`w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-9 transition-all ${isDcLocked ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-white'}`}
           >
             <option value="">Select Part Code</option>
-            {(dcPartCodes[formData.dcNo] || [])
+            {(dcPartCodes[isDcLocked ? useLockStore.getState().lockedDcNo : formData.dcNo] || [])
               .filter(code => code != null && code !== '')
               .map((code, index) => (
                 <option key={`${code}-${index}`} value={code}>{code}</option>
@@ -1010,7 +1046,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       <div className="flex justify-end gap-3 mt-4">
         <button
           type="button"
-          onClick={() => handleClear()}
+          onClick={handleClear}
           className="px-4 py-1.5 text-xs font-semibold bg-gray-500 text-white rounded-md hover:bg-gray-600 transition-all shadow-sm shadow-gray-100"
         >
           Clear (Alt+C)
