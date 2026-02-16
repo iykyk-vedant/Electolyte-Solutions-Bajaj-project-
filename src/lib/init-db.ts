@@ -1,4 +1,4 @@
-import { initializeDatabase } from './pg-db';
+import { initializeDatabase, addSampleBomData } from './pg-db';
 
 async function initDB() {
   try {
