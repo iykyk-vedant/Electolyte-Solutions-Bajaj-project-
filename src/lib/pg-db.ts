@@ -1244,38 +1244,64 @@ export async function getNextGlobalPcbSequence(mfgMonthYear: string): Promise<st
     const { getMonthCode } = await import('./pcb-utils');
     const monthCode = getMonthCode(dateObj.getMonth());
     const yearStr = String(dateObj.getFullYear()).slice(-2);
-    const searchPattern = `0${monthCode}${yearStr}`; // Look for '0' + MonthCode + Year segment
+    const searchSuffix = `${monthCode}${yearStr}`;
+    const likePattern = `ES%${searchSuffix}_____`;
 
-    // Query to find the max sequence number used for this month/year combo
-    // We filter by entries containing the pattern (roughly) or better, by parsing
-    // Since PartCode length is fixed to 7 in new format, the positions are fixed.
-    // We check for substring at specific position.
 
-    // We construct a query to check for the format:
-    // LIKE 'ES_______0A24%' (where A24 is the month/year code)
-    // The underscore _ matches any single character. 
-    // ES (2) + 7 chars + 0 (1) + M (1) + YY (2) + SSSS (4) + C (1) = 18 chars
 
-    // Like pattern: ES_______0A24%
-    // We want to match: ES + 7 chars + 0 + MonthCode + Year + ...
-    const likePattern = `ES_______${searchPattern}%`;
+    // Query to find all sequence numbers for this month/year combo
+    // We filter by entries containing the pattern: ES%B26%
+    // This allows us to handle both formats:
+    // 1. With Check Digit: ...SSSS C
+    // 2. Without Check Digit: ...SSSS
 
+    // We select the substring logic in JS for robustness
     const query = `
-      SELECT MAX(SUBSTRING(pcb_sr_no FROM 14 FOR 4)) as max_seq
+      SELECT pcb_sr_no
       FROM consolidated_data
       WHERE pcb_sr_no LIKE $1
-      AND LENGTH(pcb_sr_no) = 18
+      AND LENGTH(pcb_sr_no) >= 14 
     `;
 
     const result = await pool.query(query, [likePattern]);
 
-    let nextSeq = 1;
-    if (result.rows.length > 0 && result.rows[0].max_seq) {
-      const maxSeq = parseInt(result.rows[0].max_seq, 10);
-      if (!isNaN(maxSeq)) {
-        nextSeq = maxSeq + 1;
+    let maxSeq = 0;
+
+    result.rows.forEach(row => {
+      const pcb = row.pcb_sr_no;
+      if (!pcb) return;
+
+      const len = pcb.length;
+
+      // Candidate 1: Last 4 digits (Assumes NO check digit or 5-digit seq ending in 4)
+      const last4 = pcb.substring(len - 4);
+      const val1 = parseInt(last4, 10);
+
+      // Candidate 2: 4 digits before last char (Assumes 1 char check digit)
+      const fourBeforeLast = pcb.substring(len - 5, len - 1);
+      const val2 = parseInt(fourBeforeLast, 10);
+
+      // Check which one is valid and higher
+      if (!isNaN(val1)) {
+        if (val1 > maxSeq) maxSeq = val1;
       }
-    }
+
+      if (!isNaN(val2)) {
+        // Only consider val2 if it's reasonable (e.g. within 0-9999). 
+        // Logic: If val1 is 2467 and val2 is 0246 (from 02467), val1 is higher.
+        // If pcb is ...0246C, val1 is 246C (NaN), val2 is 0246. val2 wins.
+        if (val2 > maxSeq) maxSeq = val2;
+      }
+
+      // Special case: 5 digit sequence at end? e.g. ...02467
+      // Last 5 digits: 02467 -> 2467.
+      // Already covered by val1 (2467 from '2467') vs val2 (0246 from '0246').
+      // 2467 > 246. So maxSeq becomes 2467. Correct.
+    });
+
+    const nextSeq = maxSeq + 1;
+
+    console.log(`Max sequence found: ${maxSeq}, Next sequence: ${nextSeq}`);
 
     return String(nextSeq).padStart(4, '0');
   } catch (error) {

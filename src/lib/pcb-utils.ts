@@ -8,16 +8,7 @@ export const getMonthCode = (monthIndex: number) => {
   return codes[monthIndex] ?? 'A';
 };
 
-// Calculate a simple check digit (Modulo 36)
-const calculateCheckDigit = (input: string): string => {
-  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  let sum = 0;
-  for (let i = 0; i < input.length; i++) {
-    const charCode = input.charCodeAt(i);
-    sum += charCode;
-  }
-  return chars[sum % 36];
-};
+
 
 // Generates PCB number using provided Part Code and an incrementing counter, always using current month and year
 export const generatePcbNumber = (partCode: string, srNo?: string, mfgMonthYear?: string) => {
@@ -56,13 +47,11 @@ export const generatePcbNumber = (partCode: string, srNo?: string, mfgMonthYear?
   }
 
   // Base format: ES + partcode + 0 + monthCode + yearStr + identifier
-  const baseString = `ES${partCodeSegment}0${monthCode}${yearStr}${identifier}`;
+  const baseString = `ES${partCodeSegment}${monthCode}${yearStr}${identifier}`;
 
-  // Calculate check digit
-  const checkDigit = calculateCheckDigit(baseString);
 
   // Final format: baseString + checkDigit
-  return `${baseString}${checkDigit}`;
+  return `${baseString}R`;
 };
 
 // Get current date in MM/YYYY format for display purposes
@@ -123,11 +112,8 @@ export const getPcbNumberForDc = (partCode: string, srNo?: string, mfgMonthYear?
   }
 
   // Base format: ES + partcode + 0 + monthCode + yearStr + identifier
-  const baseString = `ES${partCodeSegment}0${monthCode}${yearStr}${identifier}`;
-
-  // Calculate check digit
-  const checkDigit = calculateCheckDigit(baseString);
+  const baseString = `ES${partCodeSegment}${monthCode}${yearStr}${identifier}`;
 
   // Final format: baseString + checkDigit
-  return `${baseString}${checkDigit}`;
+  return `${baseString}R`;
 };

@@ -138,8 +138,9 @@ export async function saveConsolidatedData(data: any, sessionDcNumber?: string, 
   }
 }
 
-// Server action to get the next Global PCB Sequence number for a given month/year
+// Server action to get next global PCB sequence
 export async function getNextGlobalPcbSequenceAction(mfgMonthYear: string) {
+  console.log('Server Action: Fetching global PCB sequence for', mfgMonthYear);
   try {
     const { getNextGlobalPcbSequence } = await import('@/lib/pg-db');
     const nextSeq = await getNextGlobalPcbSequence(mfgMonthYear);

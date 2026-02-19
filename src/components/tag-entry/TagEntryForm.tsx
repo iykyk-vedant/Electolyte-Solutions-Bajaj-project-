@@ -302,33 +302,41 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     }
   }, [formData.partCode, formData.srNo, formData.mfgMonthYear]);
 
-  // Update serial number when part code changes
-  // Calculate next sequential number for the selected part code
-  // Update serial number when Month/Year changes (Global Sequence)
+  // Initialize serial number on mount based on Current System Date
+  // Decoupled from mfgMonthYear input field to prevent unwanted resets
   useEffect(() => {
-    // Only update if not loading saved entries and mfgMonthYear is valid
-    if (formData.mfgMonthYear && formData.mfgMonthYear.length >= 7) {
+    const initSequence = async () => {
+      try {
+        // Use current date (MM/YYYY) for sequence generation
+        const now = new Date();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = now.getFullYear();
+        const currentMonthYear = `${month}/${year}`;
 
-      const fetchNextSeq = async () => {
-        try {
-          console.log('Fetching next global sequence for', formData.mfgMonthYear);
-          const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
-          const seqResult = await getNextGlobalPcbSequenceAction(formData.mfgMonthYear);
+        console.log('Initializing global sequence for Current Month:', currentMonthYear);
+        const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
+        const seqResult = await getNextGlobalPcbSequenceAction(currentMonthYear);
 
-          if (seqResult.success && seqResult.nextSeq) {
-            setFormData(prev => ({
-              ...prev,
-              srNo: seqResult.nextSeq as string
-            }));
-          }
-        } catch (e) {
-          console.error('Error fetching next sequence:', e);
+        if (seqResult.success && seqResult.nextSeq) {
+          setFormData(prev => {
+            // Only set if not already set (e.g. from session)
+            if (prev.srNo === '0001' || !prev.srNo) {
+              return {
+                ...prev,
+                srNo: seqResult.nextSeq as string
+              };
+            }
+            return prev;
+          });
         }
-      };
+      } catch (e) {
+        console.error('Error initializing sequence:', e);
+      }
+    };
 
-      fetchNextSeq();
-    }
-  }, [formData.mfgMonthYear]);
+    initSequence();
+  }, []); // Run ONCE on mount
+
 
   // Sync with lock store when locked values change
   useEffect(() => {
@@ -524,20 +532,25 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         alert('Entry saved successfully!');
 
         // Prepare for next entry:
-        // 1. Fetch next global sequence number if we have a month
+        // 1. Fetch next global sequence number for CURRENT Month (System Date)
+        // irrespective of what month was just entered in the form
         let nextSrNo = undefined;
         let preservedMonth = formData.mfgMonthYear;
 
-        if (preservedMonth) {
-          try {
-            const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
-            const seqResult = await getNextGlobalPcbSequenceAction(preservedMonth);
-            if (seqResult.success && seqResult.nextSeq) {
-              nextSrNo = seqResult.nextSeq;
-            }
-          } catch (err) {
-            console.error('Error fetching next sequence after save:', err);
+        try {
+          const now = new Date();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const year = now.getFullYear();
+          const currentMonthYear = `${month}/${year}`;
+
+          console.log('Fetching next global sequence for Current Month:', currentMonthYear);
+          const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
+          const seqResult = await getNextGlobalPcbSequenceAction(currentMonthYear);
+          if (seqResult.success && seqResult.nextSeq) {
+            nextSrNo = seqResult.nextSeq;
           }
+        } catch (err) {
+          console.error('Error fetching next sequence after save:', err);
         }
 
         handleClear(nextSrNo, preservedMonth);
