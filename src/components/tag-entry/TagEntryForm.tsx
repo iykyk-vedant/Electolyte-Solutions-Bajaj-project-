@@ -36,13 +36,13 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
   console.log('=== TagEntryForm Component Mounted ===');
   console.log('Initial props - initialData:', initialData, 'dcNumbers length:', dcNumbers.length, 'dcPartCodes keys:', Object.keys(dcPartCodes));
   console.log('Session props - DC Number:', sessionDcNumber, 'Part Code:', sessionPartCode);
-  
+
   // BRUTE FORCE APPROACH - Direct localStorage access
   console.log('=== BRUTE FORCE CHECK ===');
   const directDcNumber = localStorage.getItem('selectedDcNumber');
   const directPartCode = localStorage.getItem('selectedPartCode');
   console.log('Direct localStorage access - DC Number:', directDcNumber, 'Part Code:', directPartCode);
-  
+
   const { isDcLocked } = useLockStore();
   const { user } = useAuth();
   const [savedEntries, setSavedEntries] = useState<TagEntry[]>([]);
@@ -61,15 +61,15 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
   // BRUTE FORCE INITIALIZATION - Apply session data immediately
   useEffect(() => {
     console.log('=== BRUTE FORCE INITIALIZATION ===');
-    
+
     // Get data from multiple sources
     const dcNumber = sessionDcNumber || localStorage.getItem('selectedDcNumber');
     const partCode = sessionPartCode || localStorage.getItem('selectedPartCode');
-    
+
     console.log('Sources - sessionDcNumber:', sessionDcNumber, 'localStorage:', localStorage.getItem('selectedDcNumber'));
     console.log('Sources - sessionPartCode:', sessionPartCode, 'localStorage:', localStorage.getItem('selectedPartCode'));
     console.log('Final values - DC Number:', dcNumber, 'Part Code:', partCode);
-    
+
     // Apply immediately if we have data
     if (dcNumber || partCode) {
       console.log('APPLYING SESSION DATA TO FORM');
@@ -79,12 +79,12 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         partCode: partCode || prev.partCode
       }));
       setUserSelectedPartCode(true);
-      
+
       // ALSO UPDATE LOCK STORE
       console.log('UPDATING LOCK STORE WITH SESSION DATA');
       useLockStore.getState().setLockedValues(dcNumber || '', partCode || '');
       useLockStore.getState().lockDc(dcNumber || '', partCode || '');
-      
+
       console.log('FORM UPDATED WITH SESSION DATA');
     } else {
       console.log('NO SESSION DATA FOUND');
@@ -97,9 +97,9 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       if (e.key === 'selectedDcNumber' || e.key === 'selectedPartCode') {
         const newDcNumber = localStorage.getItem('selectedDcNumber');
         const newPartCode = localStorage.getItem('selectedPartCode');
-        
+
         console.log('External storage change detected - DC Number:', newDcNumber, 'Part Code:', newPartCode);
-        
+
         if (newDcNumber || newPartCode) {
           setFormData(prev => ({
             ...prev,
@@ -110,9 +110,9 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         }
       }
     };
-    
+
     window.addEventListener('storage', handleStorageChange);
-    
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
@@ -173,26 +173,26 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
           }));
 
           setSavedEntries(tagEntries);
-          
-          // Set initial SR No based on Partcode from database
-          if (formData.partCode) {
-            console.log('Loading SR No for Partcode:', formData.partCode);
-            const { getNextSrNoForPartcodeAction } = await import('@/app/actions/consumption-actions');
-            const srNoResult = await getNextSrNoForPartcodeAction(formData.partCode);
-            console.log('SR No result:', srNoResult);
-            if (srNoResult.success && srNoResult.data) {
-              console.log('Setting SR No to:', srNoResult.data);
+
+          // Set initial SR No based on Month/Year (Global Sequence)
+          if (formData.mfgMonthYear && formData.mfgMonthYear.length >= 7) {
+            console.log('Loading Global PCB Sequence for Month:', formData.mfgMonthYear);
+            const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
+            const seqResult = await getNextGlobalPcbSequenceAction(formData.mfgMonthYear);
+            console.log('Global PCB Sequence result:', seqResult);
+            if (seqResult.success && seqResult.nextSeq) {
+              console.log('Setting SR No to:', seqResult.nextSeq);
               setFormData(prev => ({
                 ...prev,
-                srNo: srNoResult.data as string
+                srNo: seqResult.nextSeq as string
               }));
             }
           } else {
-            console.log('No DC Number, using default SR No: 001');
-            // Fallback to 001 if no DC Number
+            console.log('No Month/Year, using default SR No: 0001');
+            // Fallback
             setFormData(prev => ({
               ...prev,
-              srNo: '001'
+              srNo: '0001'
             }));
           }
         }
@@ -202,7 +202,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     };
 
     loadSavedEntries();
-  }, [formData.dcNo]); // Reload when DC Number changes
+  }, [formData.dcNo, formData.mfgMonthYear]); // Reload when DC Number or Month/Year changes
 
   // Populate form with initial data when it changes (from image extraction)
   useEffect(() => {
@@ -217,23 +217,23 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
 
       setFormData(prev => {
         // Calculate next sequential serial number for the selected Partcode from database
-        const partCode = initialData.partCode || prev.partCode;
+        const partCode = initialData.partCode || prev.partCode; // Keep for context
         let newSrNo = prev.srNo; // Default to current srNo
 
         // Use database-based SR No generation
         const generateSrNoFromDb = async () => {
-          if (partCode) {
+          if (mfgMonthYear) {
             try {
-              const { getNextSrNoForPartcodeAction } = await import('@/app/actions/consumption-actions');
-              const srNoResult = await getNextSrNoForPartcodeAction(partCode);
-              if (srNoResult.success && srNoResult.data) {
-                return srNoResult.data;
+              const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
+              const seqResult = await getNextGlobalPcbSequenceAction(mfgMonthYear);
+              if (seqResult.success && seqResult.nextSeq) {
+                return seqResult.nextSeq;
               }
             } catch (error) {
               console.error('Error generating SR No from DB:', error);
             }
           }
-          return '001'; // Fallback
+          return '0001'; // Fallback
         };
 
         // Don't override part code if user has selected one or DC is locked
@@ -304,35 +304,31 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
 
   // Update serial number when part code changes
   // Calculate next sequential number for the selected part code
+  // Update serial number when Month/Year changes (Global Sequence)
   useEffect(() => {
-    if (formData.partCode && !isDcLocked) { // Only update when not locked
-      // Find entries with the same part code
-      const partCodeEntries = savedEntries.filter(entry => entry.partCode === formData.partCode);
+    // Only update if not loading saved entries and mfgMonthYear is valid
+    if (formData.mfgMonthYear && formData.mfgMonthYear.length >= 7) {
 
-      // Calculate next sequential number (1, 2, 3, ...) for this part code
-      const nextSrNo = partCodeEntries.length > 0
-        ? Math.max(...partCodeEntries.map(e => parseInt(e.srNo) || 0)) + 1
-        : 1;
+      const fetchNextSeq = async () => {
+        try {
+          console.log('Fetching next global sequence for', formData.mfgMonthYear);
+          const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
+          const seqResult = await getNextGlobalPcbSequenceAction(formData.mfgMonthYear);
 
-      setFormData(prev => ({
-        ...prev,
-        srNo: String(nextSrNo).padStart(3, '0')
-      }));
-    } else if (isDcLocked) {
-      // If locked, set DC No and partCode to the locked values
-      setFormData(prev => ({
-        ...prev,
-        dcNo: useLockStore.getState().lockedDcNo,
-        partCode: useLockStore.getState().lockedPartCode
-      }));
-    } else {
-      // If no part code is selected, reset to 001
-      setFormData(prev => ({
-        ...prev,
-        srNo: '001'
-      }));
+          if (seqResult.success && seqResult.nextSeq) {
+            setFormData(prev => ({
+              ...prev,
+              srNo: seqResult.nextSeq as string
+            }));
+          }
+        } catch (e) {
+          console.error('Error fetching next sequence:', e);
+        }
+      };
+
+      fetchNextSeq();
     }
-  }, [formData.partCode, savedEntries, isDcLocked]);
+  }, [formData.mfgMonthYear]);
 
   // Sync with lock store when locked values change
   useEffect(() => {
@@ -347,7 +343,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         setUserSelectedPartCode(false);
       }
     });
-    
+
     return () => unsub();
   }, []);
 
@@ -367,17 +363,17 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-  
-  
+
+
     // Handle mfgMonthYear field specially to validate and format MM/YYYY
     if (name === 'mfgMonthYear') {
       // Allow only digits and forward slash
       if (!/^[0-9/]*$/.test(value) && value !== '') {
         return; // Don't update if invalid characters
       }
-  
+
       let formattedValue = value;
-  
+
       // Auto-format as user types
       if (value.length === 2 && !value.includes('/')) {
         formattedValue = value + '/';
@@ -388,7 +384,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         // Limit to MM/YYYY format (7 characters max)
         formattedValue = value.substring(0, 7);
       }
-  
+
       setFormData(prev => ({
         ...prev,
         [name]: formattedValue
@@ -400,7 +396,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       if (!/^[0-9/-]*$/.test(value) && value !== '') {
         return; // Don't update if invalid characters
       }
-  
+
       setFormData(prev => ({
         ...prev,
         [name]: value
@@ -412,12 +408,12 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         // Don't update locked fields, keep the locked values
         return;
       }
-        
+
       setFormData(prev => ({
         ...prev,
         [name]: value
       }));
-        
+
       // If SR No is changed, update PCB Sr No accordingly
       if (name === 'srNo') {
         if (formData.partCode) {  // Changed condition from formData.dcNo to formData.partCode
@@ -472,29 +468,29 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     console.log('=== HANDLE SUBMIT CALLED ===');
     console.log('Form data:', formData);
     console.log('Session data:', { sessionDcNumber, sessionPartCode });
-    
+
     // Check if all required fields are present
     const requiredFields = {
       dcNo: formData.dcNo,
       complaintNo: formData.complaintNo
     };
-    
+
     console.log('Required fields check:', requiredFields);
     const missingFields = Object.entries(requiredFields)
       .filter(([key, value]) => !value)
       .map(([key]) => key);
-    
+
     if (missingFields.length > 0) {
       console.log('MISSING REQUIRED FIELDS:', missingFields);
       alert(`Missing required fields: ${missingFields.join(', ')}`);
       return;
     }
-    
+
     console.log('All required fields present');
-    
+
     // Skip all validation and use direct save approach
     console.log('Using direct save approach...');
-    
+
     const entryToSave = {
       srNo: formData.srNo || '001',
       dcNo: formData.dcNo || '',
@@ -512,21 +508,39 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       enggName: formData.enggName || '',
       tagEntryBy: formData.tagEntryBy || user?.name || user?.email || '',
     };
-    
+
     console.log('Entry to save:', entryToSave);
-    
+
     try {
       console.log('Importing save function...');
       const { saveConsolidatedData } = await import('@/app/actions/consumption-actions');
       console.log('Calling save function with session data:', { sessionDcNumber, sessionPartCode });
       const result = await saveConsolidatedData(entryToSave, sessionDcNumber || undefined, sessionPartCode || undefined);
-      
+
       console.log('Save result:', result);
-      
+
       if (result.success) {
         console.log('SAVE SUCCESSFUL');
         alert('Entry saved successfully!');
-        handleClear();
+
+        // Prepare for next entry:
+        // 1. Fetch next global sequence number if we have a month
+        let nextSrNo = undefined;
+        let preservedMonth = formData.mfgMonthYear;
+
+        if (preservedMonth) {
+          try {
+            const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
+            const seqResult = await getNextGlobalPcbSequenceAction(preservedMonth);
+            if (seqResult.success && seqResult.nextSeq) {
+              nextSrNo = seqResult.nextSeq;
+            }
+          } catch (err) {
+            console.error('Error fetching next sequence after save:', err);
+          }
+        }
+
+        handleClear(nextSrNo, preservedMonth);
         setShowSavedList(true);
       } else {
         console.log('SAVE FAILED:', result.error);
@@ -597,13 +611,10 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     tagEntryEventEmitter.emit(TAG_ENTRY_EVENTS.ENTRY_DELETED, formData.id);
   };
 
-  const handleClear = () => {
-    // Preserve the current SR No sequence, don't reset to '001'
-    const currentSrNo = formData.srNo || '001';
-    
+  const handleClear = (nextSrNo?: string, preservedMonth?: string) => {
     setFormData({
       id: '',
-      srNo: currentSrNo, // Keep current SR No
+      srNo: nextSrNo || formData.srNo || '0001',
       dcNo: sessionDcNumber || '', // Preserve session DC Number
       branch: 'Mumbai',
       bccdName: 'BCCD-001',
@@ -614,10 +625,11 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       partCode: sessionPartCode || '', // Preserve session Part Code
       natureOfDefect: '',
       visitingTechName: '',
-      mfgMonthYear: '',
+      mfgMonthYear: preservedMonth || '', // Preserve Month/Year if provided
       pcbSrNo: '',
       tagEntryBy: user?.name || user?.email || '',
     });
+    // ...
     // Reset the flag since it's a new entry
     setUserSelectedPartCode(!!sessionPartCode);
     setShowSearchResults(false);
@@ -631,21 +643,21 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         // Call the server action to add DC number to database
         const { addDcNumberAction } = await import('@/app/actions/db-actions');
         const result = await addDcNumberAction(newDcNo.trim(), newPartCode.trim(), dcNumbers, dcPartCodes);
-        
+
         if (result.success) {
           setNewDcNo('');
           setNewPartCode('');
           setIsDcModalOpen(false);
-          
+
           // Show success message
           alert(`DC Number "${newDcNo.trim()}" with Part Code "${newPartCode.trim()}" has been created successfully!`);
-          
+
           // Optionally, update the form to use the new DC number
           setFormData(prev => ({
             ...prev,
             dcNo: newDcNo.trim()
           }));
-          
+
           // Call the callback if provided
           if (onAddDcNumber) {
             try {
@@ -654,15 +666,15 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
               console.error('Error in onAddDcNumber callback:', callbackError);
             }
           }
-          
+
           // Reload DC numbers and part codes from the database to reflect the changes
           const { loadDcNumbersFromDb, loadDcPartCodesFromDb } = await import('@/lib/dc-data-sync');
           const updatedDcNumbers = await loadDcNumbersFromDb();
           const updatedDcPartCodes = await loadDcPartCodesFromDb();
-          
+
           // Update parent component's state by calling a callback if provided
-          window.dispatchEvent(new CustomEvent('refreshDcNumbers', { 
-            detail: { dcNumbers: updatedDcNumbers, dcPartCodes: updatedDcPartCodes } 
+          window.dispatchEvent(new CustomEvent('refreshDcNumbers', {
+            detail: { dcNumbers: updatedDcNumbers, dcPartCodes: updatedDcPartCodes }
           }));
         } else {
           alert(`Error creating DC Number: ${result.error}`);
@@ -768,7 +780,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     if (!e.altKey) return;
 
     console.log('Keyboard shortcut detected:', e.key);
-    
+
     // Prevent browser default behavior for these shortcuts
     switch (e.key.toLowerCase()) {
       case 's':
@@ -895,7 +907,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
                     navigator.clipboard.writeText(formData.dcNo);
                     alert('DC Number copied to clipboard!');
                   }
-                } }
+                }}
                 title="Copy DC Number"
               >
                 📋
@@ -903,162 +915,162 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
               <LockButton dcNo={formData.dcNo} partCode={formData.partCode} />
             </div>
           </div>
-        <select
-          name="dcNo"
-          value={isDcLocked ? useLockStore.getState().lockedDcNo : (formData.dcNo || '')}
-          onChange={handleChange}
-          disabled={isDcLocked || !!sessionDcNumber}
-          className={`w-full p-2 text-sm border border-gray-300 rounded ${isDcLocked || sessionDcNumber ? 'bg-gray-100' : ''} h-9`}
+          <select
+            name="dcNo"
+            value={isDcLocked ? useLockStore.getState().lockedDcNo : (formData.dcNo || '')}
+            onChange={handleChange}
+            disabled={isDcLocked || !!sessionDcNumber}
+            className={`w-full p-2 text-sm border border-gray-300 rounded ${isDcLocked || sessionDcNumber ? 'bg-gray-100' : ''} h-9`}
           >
-          <option value="">Select DC No.</option>
-          {dcNumbers
-            .filter(dc => dc != null && dc !== '')
-            .map((dc, index) => (
-              <option key={`${dc}-${index}`} value={dc}>{dc}</option>
-            ))}
-        </select>
+            <option value="">Select DC No.</option>
+            {dcNumbers
+              .filter(dc => dc != null && dc !== '')
+              .map((dc, index) => (
+                <option key={`${dc}-${index}`} value={dc}>{dc}</option>
+              ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Branch:</label>
+          <input
+            type="text"
+            name="branch"
+            value={formData.branch || ''}
+            onChange={handleChange}
+            className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">BCCD Name:</label>
+          <input
+            type="text"
+            name="bccdName"
+            value={formData.bccdName || ''}
+            onChange={handleChange}
+            className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Product Description:</label>
+          <input
+            type="text"
+            name="productDescription"
+            value={formData.productDescription || ''}
+            onChange={handleChange}
+            className={`w-full p-2 text-sm border border-gray-300 rounded h-9 ${formData.partCode ? 'bg-gray-100' : ''}`}
+            readOnly={!!formData.partCode} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Product Sr No:</label>
+          <div className="flex">
+            <input
+              type="text"
+              name="productSrNo"
+              value={formData.productSrNo || ''}
+              onChange={handleChange}
+              className="flex-1 p-2 text-sm border border-gray-300 rounded-l h-9" />
+            <div className="bg-gray-200 p-2 text-sm border border-l-0 border-gray-300 rounded-r flex items-center">
+              {(formData.productSrNo || '').length}/20
             </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Branch:</label>
-        <input
-          type="text"
-          name="branch"
-          value={formData.branch || ''}
-          onChange={handleChange}
-          className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
-      </div>
-          </div>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">BCCD Name:</label>
-        <input
-          type="text"
-          name="bccdName"
-          value={formData.bccdName || ''}
-          onChange={handleChange}
-          className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Product Description:</label>
-        <input
-          type="text"
-          name="productDescription"
-          value={formData.productDescription || ''}
-          onChange={handleChange}
-          className={`w-full p-2 text-sm border border-gray-300 rounded h-9 ${formData.partCode ? 'bg-gray-100' : ''}`}
-          readOnly={!!formData.partCode} />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Product Sr No:</label>
-        <div className="flex">
-          <input
-            type="text"
-            name="productSrNo"
-            value={formData.productSrNo || ''}
-            onChange={handleChange}
-            className="flex-1 p-2 text-sm border border-gray-300 rounded-l h-9" />
-          <div className="bg-gray-200 p-2 text-sm border border-l-0 border-gray-300 rounded-r flex items-center">
-            {(formData.productSrNo || '').length}/20
           </div>
         </div>
       </div>
-    </div>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Date of Purchase:</label>
-        <input
-          type="text"
-          name="dateOfPurchase"
-          value={formData.dateOfPurchase || ''}
-          onChange={handleChange}
-          placeholder="DD/MM/YYYY or MM/DD/YYYY"
-          className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Complaint No:</label>
-        <input
-          type="text"
-          name="complaintNo"
-          value={formData.complaintNo || ''}
-          onChange={handleChange}
-          className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Part Code:</label>
-        <select
-          name="partCode"
-          value={isDcLocked ? useLockStore.getState().lockedPartCode : (formData.partCode || '')}
-          onChange={handleChange}
-          disabled={isDcLocked || !!sessionPartCode}
-          className={`w-full p-2 text-sm border border-gray-300 rounded ${isDcLocked || sessionPartCode ? 'bg-gray-100' : ''} h-9`}
-        >
-          <option value="">Select Part Code</option>
-          {(dcPartCodes[isDcLocked ? useLockStore.getState().lockedDcNo : formData.dcNo] || [])
-            .filter(code => code != null && code !== '')
-            .map((code, index) => (
-              <option key={`${code}-${index}`} value={code}>{code}</option>
-            ))}
-        </select>
-      </div>
-    </div>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Nature of Defect:</label>
-        <input
-          type="text"
-          name="natureOfDefect"
-          value={formData.natureOfDefect || ''}
-          onChange={handleChange}
-          className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Visiting Tech Name:</label>
-        <input
-          type="text"
-          name="visitingTechName"
-          value={formData.visitingTechName || ''}
-          onChange={handleChange}
-          className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Mfg Month/Year:</label>
-        <input
-          type="text"
-          name="mfgMonthYear"
-          value={formData.mfgMonthYear || ''}
-          onChange={handleChange}
-          placeholder="MM/YYYY"
-          className="w-full p-2 text-sm border border-gray-300 rounded h-9"
-          maxLength={7} />
-      </div>
-    </div>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-      <div className="md:col-span-2">
-        <label className="block text-sm font-medium text-gray-700 mb-1">PCB Sr. No:</label>
-        <div className="flex">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Date of Purchase:</label>
           <input
             type="text"
-            name="pcbSrNo"
-            value={formData.pcbSrNo || ''}
+            name="dateOfPurchase"
+            value={formData.dateOfPurchase || ''}
             onChange={handleChange}
-            className="flex-1 p-2 text-sm border border-gray-300 rounded h-9"
-            readOnly />
+            placeholder="DD/MM/YYYY or MM/DD/YYYY"
+            className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Complaint No:</label>
+          <input
+            type="text"
+            name="complaintNo"
+            value={formData.complaintNo || ''}
+            onChange={handleChange}
+            className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Part Code:</label>
+          <select
+            name="partCode"
+            value={isDcLocked ? useLockStore.getState().lockedPartCode : (formData.partCode || '')}
+            onChange={handleChange}
+            disabled={isDcLocked || !!sessionPartCode}
+            className={`w-full p-2 text-sm border border-gray-300 rounded ${isDcLocked || sessionPartCode ? 'bg-gray-100' : ''} h-9`}
+          >
+            <option value="">Select Part Code</option>
+            {(dcPartCodes[isDcLocked ? useLockStore.getState().lockedDcNo : formData.dcNo] || [])
+              .filter(code => code != null && code !== '')
+              .map((code, index) => (
+                <option key={`${code}-${index}`} value={code}>{code}</option>
+              ))}
+          </select>
         </div>
       </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Tag Entry By:</label>
-        <input
-          type="text"
-          value={user?.name || user?.email || ''}
-          readOnly
-          className="w-full p-2 text-sm border border-gray-300 rounded h-9 bg-gray-100"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Nature of Defect:</label>
+          <input
+            type="text"
+            name="natureOfDefect"
+            value={formData.natureOfDefect || ''}
+            onChange={handleChange}
+            className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Visiting Tech Name:</label>
+          <input
+            type="text"
+            name="visitingTechName"
+            value={formData.visitingTechName || ''}
+            onChange={handleChange}
+            className="w-full p-2 text-sm border border-gray-300 rounded h-9" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Mfg Month/Year:</label>
+          <input
+            type="text"
+            name="mfgMonthYear"
+            value={formData.mfgMonthYear || ''}
+            onChange={handleChange}
+            placeholder="MM/YYYY"
+            className="w-full p-2 text-sm border border-gray-300 rounded h-9"
+            maxLength={7} />
+        </div>
       </div>
-    </div>
-    <div className="flex justify-end gap-3 mt-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">PCB Sr. No:</label>
+          <div className="flex">
+            <input
+              type="text"
+              name="pcbSrNo"
+              value={formData.pcbSrNo || ''}
+              onChange={handleChange}
+              className="flex-1 p-2 text-sm border border-gray-300 rounded h-9"
+              readOnly />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Tag Entry By:</label>
+          <input
+            type="text"
+            value={user?.name || user?.email || ''}
+            readOnly
+            className="w-full p-2 text-sm border border-gray-300 rounded h-9 bg-gray-100"
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-3 mt-3">
         <button
           type="button"
-          onClick={handleClear}
+          onClick={() => handleClear()}
           className="px-4 py-2 text-sm bg-gray-600 text-white rounded hover:bg-gray-700"
         >
           Clear (Alt+C)

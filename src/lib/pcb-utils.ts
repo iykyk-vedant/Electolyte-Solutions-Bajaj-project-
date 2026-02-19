@@ -8,6 +8,17 @@ export const getMonthCode = (monthIndex: number) => {
   return codes[monthIndex] ?? 'A';
 };
 
+// Calculate a simple check digit (Modulo 36)
+const calculateCheckDigit = (input: string): string => {
+  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let sum = 0;
+  for (let i = 0; i < input.length; i++) {
+    const charCode = input.charCodeAt(i);
+    sum += charCode;
+  }
+  return chars[sum % 36];
+};
+
 // Generates PCB number using provided Part Code and an incrementing counter, always using current month and year
 export const generatePcbNumber = (partCode: string, srNo?: string, mfgMonthYear?: string) => {
   if (!partCode) throw new Error('Please provide a Part Code before generating PCB number');
@@ -16,30 +27,42 @@ export const generatePcbNumber = (partCode: string, srNo?: string, mfgMonthYear?
   const cleanPartCode = partCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
   const partCodeSegment = cleanPartCode.substring(0, 7).padEnd(7, '0');
 
-  // Always use current date and month (ignore mfgMonthYear parameter)
-  const now = new Date();
-  const monthCode = getMonthCode(now.getMonth());
-  const year = String(now.getFullYear()).slice(-2);
-
-  // Use SR number if provided, otherwise use counter
-  let identifier;
-  if (srNo) {
-    // Use the SR number as the identifier, ensuring uniqueness within Part Code
-    const srNum = parseInt(srNo, 10);
-    identifier = isNaN(srNum) ? '00001' : String(srNum).padStart(5, '0');  // Changed from 3 to 5 digits
-  } else {
-    // Counter: persist in localStorage, increment per generation
-    let counter = 1;
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(PCB_COUNTER_KEY);
-      counter = stored ? Math.min(99999, Math.max(1, parseInt(stored, 10) || 1)) : 1;  // Changed from 999 to 99999
-      localStorage.setItem(PCB_COUNTER_KEY, String(Math.min(99999, counter + 1)));  // Changed from 999 to 99999
+  // Determine month and year
+  let dateObj = new Date();
+  if (mfgMonthYear) {
+    // Parse mfgMonthYear if provided
+    if (mfgMonthYear.includes('-')) {
+      const parts = mfgMonthYear.split('-');
+      if (parts.length >= 2) dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1);
+    } else if (mfgMonthYear.includes('/')) {
+      const parts = mfgMonthYear.split('/');
+      if (parts.length >= 2) dateObj = new Date(parseInt(parts[1]), parseInt(parts[0]) - 1);
+    } else {
+      const parsed = new Date(mfgMonthYear);
+      if (!isNaN(parsed.getTime())) dateObj = parsed;
     }
-    identifier = String(counter).padStart(5, '0');  // Changed from 3 to 5 digits
   }
 
-  // Final format: ES + partcode + monthCode + year + identifier
-  return `ES${partCodeSegment}${monthCode}${year}${identifier}`;
+  const monthCode = getMonthCode(dateObj.getMonth());
+  const yearStr = String(dateObj.getFullYear()).slice(-2);
+
+  // Use SR number if provided, otherwise use counter (default 1)
+  let identifier;
+  if (srNo) {
+    const srNum = parseInt(srNo, 10);
+    identifier = isNaN(srNum) ? '0001' : String(srNum).padStart(4, '0'); // 4 digits
+  } else {
+    identifier = '0001';
+  }
+
+  // Base format: ES + partcode + 0 + monthCode + yearStr + identifier
+  const baseString = `ES${partCodeSegment}0${monthCode}${yearStr}${identifier}`;
+
+  // Calculate check digit
+  const checkDigit = calculateCheckDigit(baseString);
+
+  // Final format: baseString + checkDigit
+  return `${baseString}${checkDigit}`;
 };
 
 // Get current date in MM/YYYY format for display purposes
@@ -90,22 +113,21 @@ export const getPcbNumberForDc = (partCode: string, srNo?: string, mfgMonthYear?
   const monthCode = getMonthCode(dateObj.getMonth());
   const yearStr = String(dateObj.getFullYear()).slice(-2);
 
-  // Use SR number if provided, otherwise use counter
+  // Use SR number if provided, otherwise default to "0001"
   let identifier;
   if (srNo) {
-    // Use the SR number as the identifier, ensuring uniqueness within Part Code
     const srNum = parseInt(srNo, 10);
-    identifier = isNaN(srNum) ? '00001' : String(srNum).padStart(5, '0');
+    identifier = isNaN(srNum) ? '0001' : String(srNum).padStart(4, '0'); // 4 digits
   } else {
-    // Get current counter without incrementing
-    let counter = 1;
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(PCB_COUNTER_KEY);
-      counter = stored ? Math.min(99999, Math.max(1, parseInt(stored, 10) || 1)) : 1;
-    }
-    identifier = String(counter).padStart(5, '0');
+    identifier = '0001';
   }
 
-  // Final format: ES + partcode + monthCode + year + identifier
-  return `ES${partCodeSegment}${monthCode}${yearStr}${identifier}`;
+  // Base format: ES + partcode + 0 + monthCode + yearStr + identifier
+  const baseString = `ES${partCodeSegment}0${monthCode}${yearStr}${identifier}`;
+
+  // Calculate check digit
+  const checkDigit = calculateCheckDigit(baseString);
+
+  // Final format: baseString + checkDigit
+  return `${baseString}${checkDigit}`;
 };

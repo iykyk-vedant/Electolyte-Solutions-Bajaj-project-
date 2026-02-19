@@ -138,6 +138,18 @@ export async function saveConsolidatedData(data: any, sessionDcNumber?: string, 
   }
 }
 
+// Server action to get the next Global PCB Sequence number for a given month/year
+export async function getNextGlobalPcbSequenceAction(mfgMonthYear: string) {
+  try {
+    const { getNextGlobalPcbSequence } = await import('@/lib/pg-db');
+    const nextSeq = await getNextGlobalPcbSequence(mfgMonthYear);
+    return { success: true, nextSeq };
+  } catch (error) {
+    console.error('Error getting next global PCB sequence:', error);
+    return { success: false, error: 'Failed to get next PCB sequence' };
+  }
+}
+
 // Server action to get consolidated data entries (Compatibility wrapper)
 export async function getConsolidatedDataEntries() {
   try {

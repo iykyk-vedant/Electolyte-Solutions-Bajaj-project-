@@ -1214,3 +1214,72 @@ export async function removeUnusedColumnsFromConsolidatedData() {
     return false;
   }
 }
+
+// Get expected PCB Serial Number Sequence (Global across all part codes for the month)
+export async function getNextGlobalPcbSequence(mfgMonthYear: string): Promise<string> {
+  try {
+    // 1. Determine Month Code and Year from input
+    let dateObj = new Date();
+    if (mfgMonthYear) {
+      if (mfgMonthYear.includes('-')) {
+        const parts = mfgMonthYear.split('-');
+        if (parts.length >= 2) dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1);
+      } else if (mfgMonthYear.includes('/')) {
+        const parts = mfgMonthYear.split('/');
+        if (parts.length >= 2) dateObj = new Date(parseInt(parts[1]), parseInt(parts[0]) - 1);
+      } else {
+        const parsed = new Date(mfgMonthYear);
+        if (!isNaN(parsed.getTime())) dateObj = parsed;
+      }
+    }
+
+    // Format: ES + PartCode(7) + 0 + MonthCode(1) + Year(2) + SrNo(4) + CheckDigit(1)
+    // We need to match MonthCode + Year (e.g., 'A24') which is at index 10, 11, 12 (0-indexed)
+    // actually index 10 is MonthCode, 11-12 is Year.
+    // Index: 
+    // E S P P P P P P P 0 M Y Y S S S S C
+    // 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7
+    // So MonthCode is at index 10, Year is at 11-12. Sequence is 13-16.
+
+    const { getMonthCode } = await import('./pcb-utils');
+    const monthCode = getMonthCode(dateObj.getMonth());
+    const yearStr = String(dateObj.getFullYear()).slice(-2);
+    const searchPattern = `0${monthCode}${yearStr}`; // Look for '0' + MonthCode + Year segment
+
+    // Query to find the max sequence number used for this month/year combo
+    // We filter by entries containing the pattern (roughly) or better, by parsing
+    // Since PartCode length is fixed to 7 in new format, the positions are fixed.
+    // We check for substring at specific position.
+
+    // We construct a query to check for the format:
+    // LIKE 'ES_______0A24%' (where A24 is the month/year code)
+    // The underscore _ matches any single character. 
+    // ES (2) + 7 chars + 0 (1) + M (1) + YY (2) + SSSS (4) + C (1) = 18 chars
+
+    // Like pattern: ES_______0A24%
+    // We want to match: ES + 7 chars + 0 + MonthCode + Year + ...
+    const likePattern = `ES_______${searchPattern}%`;
+
+    const query = `
+      SELECT MAX(SUBSTRING(pcb_sr_no FROM 14 FOR 4)) as max_seq
+      FROM consolidated_data
+      WHERE pcb_sr_no LIKE $1
+      AND LENGTH(pcb_sr_no) = 18
+    `;
+
+    const result = await pool.query(query, [likePattern]);
+
+    let nextSeq = 1;
+    if (result.rows.length > 0 && result.rows[0].max_seq) {
+      const maxSeq = parseInt(result.rows[0].max_seq, 10);
+      if (!isNaN(maxSeq)) {
+        nextSeq = maxSeq + 1;
+      }
+    }
+
+    return String(nextSeq).padStart(4, '0');
+  } catch (error) {
+    console.error('Error getting next global PCB sequence:', error);
+    return '0001'; // Fallback
+  }
+}
