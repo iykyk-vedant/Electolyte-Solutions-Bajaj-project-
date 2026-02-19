@@ -58,27 +58,54 @@ export const getPcbNumberForDc = (partCode: string, srNo?: string, mfgMonthYear?
   const cleanPartCode = partCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
   const partCodeSegment = cleanPartCode.substring(0, 7).padEnd(7, '0');
 
-  // Always use current date and month (ignore mfgMonthYear parameter)
-  const now = new Date();
-  const monthCode = getMonthCode(now.getMonth());
-  const year = String(now.getFullYear()).slice(-2);
+  // Determine month and year from mfgMonthYear input or use current date
+  let dateObj = new Date();
+  if (mfgMonthYear) {
+    // Check if it's a date string like "2024-01" (YYYY-MM) or "01/2024" (MM/YYYY)
+    if (mfgMonthYear.includes('-')) {
+      const parts = mfgMonthYear.split('-');
+      if (parts.length >= 2) {
+        // Assuming YYYY-MM
+        const year = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1; // 0-indexed
+        dateObj = new Date(year, month);
+      }
+    } else if (mfgMonthYear.includes('/')) {
+      const parts = mfgMonthYear.split('/');
+      if (parts.length >= 2) {
+        // Assuming MM/YYYY
+        const month = parseInt(parts[0]) - 1; // 0-indexed
+        const year = parseInt(parts[1]);
+        dateObj = new Date(year, month);
+      }
+    } else {
+      // Try parsing as normal date string
+      const parsed = new Date(mfgMonthYear);
+      if (!isNaN(parsed.getTime())) {
+        dateObj = parsed;
+      }
+    }
+  }
+
+  const monthCode = getMonthCode(dateObj.getMonth());
+  const yearStr = String(dateObj.getFullYear()).slice(-2);
 
   // Use SR number if provided, otherwise use counter
   let identifier;
   if (srNo) {
     // Use the SR number as the identifier, ensuring uniqueness within Part Code
     const srNum = parseInt(srNo, 10);
-    identifier = isNaN(srNum) ? '00001' : String(srNum).padStart(5, '0');  // Changed from 3 to 5 digits
+    identifier = isNaN(srNum) ? '00001' : String(srNum).padStart(5, '0');
   } else {
     // Get current counter without incrementing
     let counter = 1;
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(PCB_COUNTER_KEY);
-      counter = stored ? Math.min(99999, Math.max(1, parseInt(stored, 10) || 1)) : 1;  // Changed from 999 to 99999
+      counter = stored ? Math.min(99999, Math.max(1, parseInt(stored, 10) || 1)) : 1;
     }
-    identifier = String(counter).padStart(5, '0');  // Changed from 3 to 5 digits
+    identifier = String(counter).padStart(5, '0');
   }
 
   // Final format: ES + partcode + monthCode + year + identifier
-  return `ES${partCodeSegment}${monthCode}${year}${identifier}`;
+  return `ES${partCodeSegment}${monthCode}${yearStr}${identifier}`;
 };

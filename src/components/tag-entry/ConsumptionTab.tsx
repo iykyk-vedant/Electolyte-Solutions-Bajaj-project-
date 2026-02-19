@@ -93,7 +93,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
 
   // Form data state
   const [formData, setFormData] = useState<ConsumptionEntry>({
-    repairDate: '',
+    repairDate: new Date().toISOString().split('T')[0], // Default to today's date
     testing: '',
     failure: '',
     status: '',
@@ -152,15 +152,27 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
 
 
 
-  // Function to load data from database - only load tag entry data, not consumption
-  const loadAllData = async () => {
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const PAGE_SIZE = 10;
+
+  // Function to load data from database with pagination
+  const loadPageData = async (page: number) => {
     try {
-      // Load consolidated data entries from database
-      const { getConsolidatedDataEntries } = await import('@/app/actions/consumption-actions');
-      const result = await getConsolidatedDataEntries();
+      setIsLoading(true);
+      // Load consolidated data entries from database with pagination
+      const { getConsolidatedDataEntriesPaginatedAction } = await import('@/app/actions/consumption-actions');
+      const result = await getConsolidatedDataEntriesPaginatedAction(page, PAGE_SIZE);
 
       if (result.success) {
         const dbEntries = result.data || [];
+        // Update pagination info if available
+        if (result.pagination) {
+          setTotalPages(result.pagination.totalPages);
+          setCurrentPage(page);
+        }
 
         // Convert database entries to TableRow format for the table
         const tableRows: TableRow[] = dbEntries.map((entry: any) => ({
@@ -195,21 +207,26 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
         }));
 
         setTableData(tableRows);
-        console.log('Loaded table data - length:', tableRows.length);
-        console.log('First few entries:', tableRows.slice(0, 3));
+        console.log('Loaded table data page', page, '- length:', tableRows.length);
       }
     } catch (e) {
       console.error('Error loading data from database:', e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Load data from database on component mount
   useEffect(() => {
-    loadAllData();
+    loadPageData(1);
   }, []);
 
-  // This useEffect is no longer needed as data loading is handled by loadAllData function
-  // The table and consumption entries are loaded together in the main useEffect
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      loadPageData(newPage);
+    }
+  };
 
   const handleFind = async () => {
     // Validate that all search fields are filled
@@ -283,15 +300,18 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
           }));
         }
       } else {
-        console.log('No existing entry found, using default values');
-        // If no existing entry is found, use default values
+        console.log('No existing entry found, preserving previous values for new entry');
+        // If no existing entry is found, use previous values if available, or defaults
         setFormData(prev => ({
           ...prev,
-          pcbSrNo, // Use the same PCB serial number format as TagEntryForm
-          repairDate: new Date().toISOString().split('T')[0], // Today's date
-          testing: 'PASS', // Default value
-          status: 'OK', // Default value
+          pcbSrNo, // Use the generated PCB serial number
+          // Preserve previous values if they exist, otherwise use defaults
+          repairDate: prev.repairDate || new Date().toISOString().split('T')[0],
+          testing: prev.testing || 'PASS',
+          status: prev.status || 'OK',
+          // Clear validation result for new entry
           validationResult: '',
+          // Note: componentChange and failure are preserved from previous state if not cleared elsewhere
         }));
       }
 
@@ -560,10 +580,24 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
         return;
       }
 
-      // Refresh the data to show updated consumption data
-      await loadAllData();
+      // Refresh the data to show updated consumption data - reload current page
+      await loadPageData(currentPage);
 
       alert('Data consumed successfully! Consumption data saved to database.');
+
+      // Auto-reset for next entry:
+      // 1. Clear Search Serial No
+      setSrNo('');
+      // 2. Clear Component Change and Validation Result
+      setFormData(prev => ({
+        ...prev,
+        componentChange: '',
+        validationResult: '',
+        // Keep other fields like repairDate, testing, failure, status, enggName, etc.
+      }));
+      // 3. Reset PCB Found state to force new search
+      setIsPcbFound(false);
+      // 4. Focus back on Serial No input (optional via ref, but state reset helps)
     } catch (error) {
       console.error('Error during consume operation:', error);
       alert('There was an error processing the consumption data.');
@@ -630,8 +664,8 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
         return;
       }
 
-      // Refresh the data to show updated consumption data
-      await loadAllData();
+      // Refresh the data to show updated consumption data - reload current page
+      await loadPageData(currentPage);
 
       alert('Consumption entry updated successfully!');
     } catch (error) {
@@ -715,7 +749,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
   const handleClearForm = () => {
     // Reset form data
     setFormData({
-      repairDate: '',
+      repairDate: new Date().toISOString().split('T')[0], // Default to today's date
       testing: '',
       failure: '',
       status: '',
@@ -1162,6 +1196,58 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* Pagination Controls */}
+        <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-between sm:px-6">
+          <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-gray-700">
+                Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{totalPages}</span>
+                {isLoading && <span className="ml-2 text-gray-500">(Loading...)</span>}
+              </p>
+            </div>
+            <div>
+              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                <button
+                  onClick={() => handlePageChange(1)}
+                  disabled={currentPage === 1 || isLoading}
+                  className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${currentPage === 1 || isLoading ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                >
+                  <span className="sr-only">First</span>
+                  &laquo; First
+                </button>
+                <button
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1 || isLoading}
+                  className={`relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium ${currentPage === 1 || isLoading ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                >
+                  <span className="sr-only">Previous</span>
+                  &larr; Prev
+                </button>
+                <button
+                  onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages || isLoading}
+                  className={`relative inline-flex items-center px-2 py-2 border border-gray-300 bg-white text-sm font-medium ${currentPage === totalPages || isLoading ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                >
+                  <span className="sr-only">Next</span>
+                  Next &rarr;
+                </button>
+                <button
+                  onClick={() => handlePageChange(totalPages)}
+                  disabled={currentPage === totalPages || isLoading}
+                  className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${currentPage === totalPages || isLoading ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                >
+                  <span className="sr-only">Last</span>
+                  Last &raquo;
+                </button>
+              </nav>
+            </div>
           </div>
         </div>
 

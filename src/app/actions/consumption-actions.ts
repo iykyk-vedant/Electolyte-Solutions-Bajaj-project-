@@ -138,20 +138,67 @@ export async function saveConsolidatedData(data: any, sessionDcNumber?: string, 
   }
 }
 
-// Server action to get consolidated data entries
+// Server action to get consolidated data entries (Compatibility wrapper)
 export async function getConsolidatedDataEntries() {
   try {
-    const { getAllConsolidatedDataEntries } = await import('@/lib/pg-db');
-    const entries = await getAllConsolidatedDataEntries();
-    return {
-      success: true,
-      data: entries
-    };
+    // Re-use the paginated function to get the latest 50 entries
+    // This maintains backward compatibility for TagEntryForm while keeping performance good
+    const result = await getConsolidatedDataEntriesPaginatedAction(1, 50);
+
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data
+      };
+    } else {
+      return {
+        success: false,
+        error: result.error
+      };
+    }
   } catch (error) {
     console.error('Error fetching consolidated data entries:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'An unknown error occurred'
+    };
+  }
+}
+
+// Server action to get consolidated data entries with pagination
+export async function getConsolidatedDataEntriesPaginatedAction(page: number = 1, limit: number = 10) {
+  try {
+    const { getConsolidatedDataEntriesPaginated, getConsolidatedDataCount } = await import('@/lib/pg-db');
+
+    const offset = (page - 1) * limit;
+
+    // Run both queries in parallel
+    const [entries, totalCount] = await Promise.all([
+      getConsolidatedDataEntriesPaginated(limit, offset),
+      getConsolidatedDataCount()
+    ]);
+
+    return {
+      success: true,
+      data: entries,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    };
+  } catch (error) {
+    console.error('Error fetching consolidated data entries paginated:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unknown error occurred',
+      pagination: {
+        page,
+        limit,
+        totalCount: 0,
+        totalPages: 0
+      }
     };
   }
 }

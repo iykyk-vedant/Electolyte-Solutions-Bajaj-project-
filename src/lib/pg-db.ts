@@ -791,14 +791,28 @@ export async function saveConsolidatedDataEntry(entry: any, sessionDcNumber?: st
   }
 }
 
-// Get all consolidated data entries
-export async function getAllConsolidatedDataEntries(): Promise<any[]> {
+// Get consolidated data entries with pagination
+export async function getConsolidatedDataEntriesPaginated(limit: number, offset: number): Promise<any[]> {
   try {
-    const result = await pool.query('SELECT * FROM consolidated_data ORDER BY created_at DESC');
+    const result = await pool.query(
+      'SELECT * FROM consolidated_data ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+      [limit, offset]
+    );
     return result.rows;
   } catch (error) {
-    console.error('Error fetching consolidated data entries:', error);
+    console.error('Error fetching consolidated data entries paginated:', error);
     return [];
+  }
+}
+
+// Get total count of consolidated data entries
+export async function getConsolidatedDataCount(): Promise<number> {
+  try {
+    const result = await pool.query('SELECT COUNT(*) FROM consolidated_data');
+    return parseInt(result.rows[0].count, 10);
+  } catch (error) {
+    console.error('Error fetching consolidated data count:', error);
+    return 0;
   }
 }
 
