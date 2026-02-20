@@ -117,6 +117,9 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
   const [tableData, setTableData] = useState<TableRow[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
 
+  // State to hold the full DB entry of the currently searched and found PCB
+  const [searchedEntryData, setSearchedEntryData] = useState<any>(null);
+
   // Workflow state
   const [isPcbFound, setIsPcbFound] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -260,6 +263,10 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
 
         // Find the corresponding entry in tableData to get the ID
         const tableEntry = tableData.find(entry => entry.pcbSrNo === existingEntry.pcb_sr_no);
+
+        // Store the full DB entry for consumption/updates without needing table selection
+        setSearchedEntryData(existingEntry);
+
         if (tableEntry) {
           console.log('Found matching table entry, selecting it');
           setSelectedEntryId(tableEntry.id || null);
@@ -287,7 +294,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
           // Fallback to using search result data
           setFormData(prev => ({
             ...prev,
-            pcbSrNo, // Use the same PCB serial number format as TagEntryForm
+            pcbSrNo: existingEntry.pcb_sr_no || pcbSrNo, // Use exact DB string
             repairDate: existingEntry.repair_date || new Date().toISOString().split('T')[0],
             testing: existingEntry.testing || 'PASS',
             failure: existingEntry.failure || '',
@@ -486,48 +493,48 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
       return;
     }
 
-    // Validate that an entry is selected
-    if (!selectedEntryId) {
-      alert('Please select an entry from the table first.');
+    // Prioritize the entry found during Search (searchedEntryData) 
+    // over manually selected rows (selectedEntryId)
+    let targetEntry: any = null;
+    let targetProductSrNo = '';
+
+    if (searchedEntryData) {
+      targetEntry = searchedEntryData;
+      // Depending on if it's the raw DB format or our TableRow format:
+      targetProductSrNo = searchedEntryData.product_sr_no || searchedEntryData.productSrNo;
+    } else if (selectedEntryId) {
+      targetEntry = tableData.find(entry => entry.id === selectedEntryId);
+      targetProductSrNo = targetEntry?.productSrNo || '';
+    }
+
+    if (!targetEntry || !targetProductSrNo) {
+      if (!isPcbFound) {
+        alert('Please find a PCB first before consuming.');
+      } else {
+        alert('Error: Could not determine the target entry for consumption.');
+      }
       return;
     }
 
     try {
-      console.log('handleConsume - Selected entry ID:', selectedEntryId);
-      console.log('handleConsume - Table data length:', tableData.length);
-      console.log('handleConsume - First few table entries IDs:', tableData.slice(0, 3).map(e => e.id));
+      console.log('handleConsume - Target entry for update:', targetProductSrNo);
 
-      // Find the selected entry to get the correct product serial number
-      const selectedEntry = tableData.find(entry => entry.id === selectedEntryId);
-      console.log('handleConsume - Found selected entry:', selectedEntry);
-
-      if (!selectedEntry || !selectedEntry.productSrNo) {
-        console.error('Could not find selected entry or product serial number');
-        console.error('Selected entry ID:', selectedEntryId);
-        console.error('Table data:', tableData);
-        console.error('Found entry:', selectedEntry);
-        alert('Error: Could not find the selected entry. Please select an entry from the table.');
-        return;
-      }
-
-      // Update the consolidated data entry with consumption data
-      console.log('handleConsume - Sending update request with entry.productSrNo:', selectedEntry.productSrNo);
-      console.log('handleConsume - Update data:', {
-        // Preserve all existing tag entry fields from the selected entry
-        srNo: selectedEntry.srNo,
-        dcNo: selectedEntry.dcNo,
-        dcDate: selectedEntry.dcDate,
-        branch: selectedEntry.branch,
-        bccdName: selectedEntry.bccdName,
-        productDescription: selectedEntry.productDescription,
-        productSrNo: selectedEntry.productSrNo, // This should match selectedEntry.productSrNo
-        dateOfPurchase: selectedEntry.dateOfPurchase,
-        complaintNo: selectedEntry.complaintNo,
-        partCode: selectedEntry.partCode,
-        natureOfDefect: selectedEntry.defect,
-        visitingTechName: selectedEntry.visitingTechName,
-        mfgMonthYear: selectedEntry.mfgMonthYear,
-        pcbSrNo: selectedEntry.pcbSrNo,
+      const updateResult = await updateConsolidatedDataEntryByProductSrNoAction(targetProductSrNo, {
+        // Preserve all existing tag entry fields from the target entry
+        srNo: targetEntry.srNo || targetEntry.sr_no || '',
+        dcNo: targetEntry.dcNo || targetEntry.dc_no || '',
+        dcDate: targetEntry.dcDate || targetEntry.dc_date || '',
+        branch: targetEntry.branch || '',
+        bccdName: targetEntry.bccdName || targetEntry.bccd_name || '',
+        productDescription: targetEntry.productDescription || targetEntry.product_description || '',
+        productSrNo: targetProductSrNo,
+        dateOfPurchase: targetEntry.dateOfPurchase || targetEntry.date_of_purchase || '',
+        complaintNo: targetEntry.complaintNo || targetEntry.complaint_no || '',
+        partCode: targetEntry.partCode || targetEntry.part_code || '',
+        natureOfDefect: targetEntry.defect || targetEntry.nature_of_defect || '',
+        visitingTechName: targetEntry.visitingTechName || targetEntry.visiting_tech_name || '',
+        mfgMonthYear: targetEntry.mfgMonthYear || targetEntry.mfg_month_year || '',
+        pcbSrNo: targetEntry.pcbSrNo || targetEntry.pcb_sr_no || '',
         // Update consumption fields
         repairDate: formData.repairDate,
         testing: formData.testing,
@@ -538,37 +545,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
         enggName: formData.enggName,
         dispatchDate: formData.dispatchDate,
         consumptionEntryBy: user?.name || user?.email || '',
-        tagEntryBy: selectedEntry.tagEntryBy || user?.name || user?.email || '',
-        validationResult: validationResult,
-      });
-
-      const updateResult = await updateConsolidatedDataEntryByProductSrNoAction(selectedEntry.productSrNo, {
-        // Preserve all existing tag entry fields from the selected entry
-        srNo: selectedEntry.srNo,
-        dcNo: selectedEntry.dcNo,
-        dcDate: selectedEntry.dcDate,
-        branch: selectedEntry.branch,
-        bccdName: selectedEntry.bccdName,
-        productDescription: selectedEntry.productDescription,
-        productSrNo: selectedEntry.productSrNo, // This should match selectedEntry.productSrNo
-        dateOfPurchase: selectedEntry.dateOfPurchase,
-        complaintNo: selectedEntry.complaintNo,
-        partCode: selectedEntry.partCode,
-        natureOfDefect: selectedEntry.defect,
-        visitingTechName: selectedEntry.visitingTechName,
-        mfgMonthYear: selectedEntry.mfgMonthYear,
-        pcbSrNo: selectedEntry.pcbSrNo,
-        // Update consumption fields
-        repairDate: formData.repairDate,
-        testing: formData.testing,
-        failure: formData.failure,
-        status: formData.status,
-        analysis: formData.analysis,
-        componentChange: formData.componentChange,
-        enggName: formData.enggName,
-        dispatchDate: formData.dispatchDate,
-        consumptionEntryBy: user?.name || user?.email || '',
-        tagEntryBy: selectedEntry.tagEntryBy || user?.name || user?.email || '',
+        tagEntryBy: targetEntry.tagEntryBy || targetEntry.tag_entry_by || user?.name || user?.email || '',
         validationResult: validationResult,
       });
 
@@ -607,8 +584,19 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
 
 
   const handleUpdate = useCallback(async () => {
-    if (!selectedEntryId) {
-      alert('Please select an entry to update.');
+    let targetEntry: any = null;
+    let targetProductSrNo = '';
+
+    if (searchedEntryData) {
+      targetEntry = searchedEntryData;
+      targetProductSrNo = searchedEntryData.product_sr_no || searchedEntryData.productSrNo;
+    } else if (selectedEntryId) {
+      targetEntry = tableData.find(entry => entry.id === selectedEntryId);
+      targetProductSrNo = targetEntry?.productSrNo || '';
+    }
+
+    if (!targetEntry || !targetProductSrNo) {
+      alert('Please select an entry to update or find a PCB first.');
       return;
     }
 
@@ -619,31 +607,32 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
     }
 
     try {
-      // Find the selected entry to get the correct product serial number
-      const selectedEntry = tableData.find(entry => entry.id === selectedEntryId);
-      if (!selectedEntry || !selectedEntry.productSrNo) {
-        console.error('Could not find selected entry or product serial number');
-        alert('Error: Could not find the selected entry. Please select an entry from the table.');
+      // Find the target entry to get the correct product serial number
+      console.log('handleUpdate - Found target entry:', targetEntry);
+
+      if (!targetEntry || !targetProductSrNo) {
+        console.error('Could not find target entry or product serial number');
+        alert('Error: Could not find the target entry. Please select an entry from the table or search for a PCB.');
         return;
       }
 
       // Update the consolidated data entry with consumption data
-      const updateResult = await updateConsolidatedDataEntryByProductSrNoAction(selectedEntry.productSrNo, {
-        // Preserve all existing tag entry fields from the selected entry
-        srNo: selectedEntry.srNo,
-        dcNo: selectedEntry.dcNo,
-        dcDate: selectedEntry.dcDate,
-        branch: selectedEntry.branch,
-        bccdName: selectedEntry.bccdName,
-        productDescription: selectedEntry.productDescription,
-        productSrNo: selectedEntry.productSrNo, // This should match selectedEntry.productSrNo
-        dateOfPurchase: selectedEntry.dateOfPurchase,
-        complaintNo: selectedEntry.complaintNo,
-        partCode: selectedEntry.partCode,
-        natureOfDefect: selectedEntry.defect,
-        visitingTechName: selectedEntry.visitingTechName,
-        mfgMonthYear: selectedEntry.mfgMonthYear,
-        pcbSrNo: selectedEntry.pcbSrNo,
+      const updateResult = await updateConsolidatedDataEntryByProductSrNoAction(targetProductSrNo, {
+        // Preserve all existing tag entry fields from the target entry
+        srNo: targetEntry.srNo || targetEntry.sr_no || '',
+        dcNo: targetEntry.dcNo || targetEntry.dc_no || '',
+        dcDate: targetEntry.dcDate || targetEntry.dc_date || '',
+        branch: targetEntry.branch || '',
+        bccdName: targetEntry.bccdName || targetEntry.bccd_name || '',
+        productDescription: targetEntry.productDescription || targetEntry.product_description || '',
+        productSrNo: targetProductSrNo,
+        dateOfPurchase: targetEntry.dateOfPurchase || targetEntry.date_of_purchase || '',
+        complaintNo: targetEntry.complaintNo || targetEntry.complaint_no || '',
+        partCode: targetEntry.partCode || targetEntry.part_code || '',
+        natureOfDefect: targetEntry.defect || targetEntry.nature_of_defect || '',
+        visitingTechName: targetEntry.visitingTechName || targetEntry.visiting_tech_name || '',
+        mfgMonthYear: targetEntry.mfgMonthYear || targetEntry.mfg_month_year || '',
+        pcbSrNo: targetEntry.pcbSrNo || targetEntry.pcb_sr_no || '',
         // Update consumption fields
         repairDate: formData.repairDate,
         testing: formData.testing,
@@ -654,7 +643,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
         enggName: formData.enggName,
         dispatchDate: formData.dispatchDate,
         consumptionEntryBy: user?.name || user?.email || '',
-        tagEntryBy: selectedEntry.tagEntryBy || '',
+        tagEntryBy: targetEntry.tagEntryBy || targetEntry.tag_entry_by || '',
         validationResult: validationResult,
       });
 
@@ -668,52 +657,69 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
       await loadPageData(currentPage);
 
       alert('Consumption entry updated successfully!');
+
+      // Auto-reset
+      setIsPcbFound(false);
+      setSearchedEntryData(null);
+      setSrNo('');
     } catch (error) {
       console.error('Error during update operation:', error);
       alert('There was an error updating the consumption data.');
     }
-  }, [selectedEntryId, formData, srNo, partCode, mfgMonthYear, engineerName, user?.name, user?.email, validationResult]);
+  }, [searchedEntryData, selectedEntryId, tableData, formData, srNo, partCode, mfgMonthYear, engineerName, user?.name, user?.email, validationResult, currentPage]);
 
   const handleDelete = async () => {
-    if (!selectedEntryId) {
-      alert('Please select an entry to delete.');
+    let targetEntryId = selectedEntryId;
+
+    // If we have a searched entry but it's not selected in the table, try to find its ID
+    if (!targetEntryId && searchedEntryData) {
+      targetEntryId = searchedEntryData.id;
+    }
+
+    if (!targetEntryId) {
+      alert('Please select an entry to delete or search for a PCB.');
       return;
     }
 
     // Validate that the ID is a reasonable integer (not a large timestamp)
-    const idNum = parseInt(String(selectedEntryId), 10);
+    const idNum = parseInt(String(targetEntryId), 10);
     if (isNaN(idNum) || idNum > 2147483647) { // Max 32-bit integer
       alert('Invalid entry ID. Please select a valid entry to delete.');
-      console.error('Attempted to delete entry with invalid ID:', selectedEntryId);
+      console.error('Attempted to delete entry with invalid ID:', targetEntryId);
       return;
     }
 
-    if (!confirm('Are you sure you want to delete this entry?')) {
+    if (!window.confirm('Are you sure you want to delete this consumption entry? This action cannot be undone.')) {
       return;
     }
 
     try {
       // Find the entry to delete to get its product serial number
-      const entryToDelete = tableData.find(entry => entry.id === selectedEntryId);
+      // We first check searchedEntryData, then tableData based on the ID we resolved
+      let entryToDelete = searchedEntryData && searchedEntryData.id === targetEntryId
+        ? searchedEntryData
+        : tableData.find(entry => entry.id === targetEntryId);
 
-      if (entryToDelete && entryToDelete.productSrNo) {
+      const targetProductSrNo = entryToDelete?.product_sr_no || entryToDelete?.productSrNo;
+
+      if (entryToDelete && targetProductSrNo) {
         // Update the consolidated data entry to clear consumption fields
-        const updateResult = await updateConsolidatedDataEntryByProductSrNoAction(entryToDelete.productSrNo, {
+        const updateResult = await updateConsolidatedDataEntryByProductSrNoAction(targetProductSrNo, {
           // Keep all tag entry fields but clear consumption fields
-          srNo: entryToDelete.srNo,
-          dcNo: entryToDelete.dcNo,
-          dcDate: entryToDelete.dcDate,
-          branch: entryToDelete.branch,
-          bccdName: entryToDelete.bccdName,
-          productDescription: entryToDelete.productDescription,
-          productSrNo: entryToDelete.productSrNo,
-          dateOfPurchase: entryToDelete.dateOfPurchase,
-          complaintNo: entryToDelete.complaintNo,
-          partCode: entryToDelete.partCode,
-          natureOfDefect: entryToDelete.defect,
-          visitingTechName: entryToDelete.visitingTechName,
-          mfgMonthYear: entryToDelete.mfgMonthYear,
-          pcbSrNo: entryToDelete.pcbSrNo,
+          srNo: entryToDelete.srNo || entryToDelete.sr_no || '',
+          dcNo: entryToDelete.dcNo || entryToDelete.dc_no || '',
+          dcDate: entryToDelete.dcDate || entryToDelete.dc_date || '',
+          branch: entryToDelete.branch || '',
+          bccdName: entryToDelete.bccdName || entryToDelete.bccd_name || '',
+          productDescription: entryToDelete.productDescription || entryToDelete.product_description || '',
+          productSrNo: targetProductSrNo,
+          dateOfPurchase: entryToDelete.dateOfPurchase || entryToDelete.date_of_purchase || '',
+          complaintNo: entryToDelete.complaintNo || entryToDelete.complaint_no || '',
+          partCode: entryToDelete.partCode || entryToDelete.part_code || '',
+          natureOfDefect: entryToDelete.defect || entryToDelete.nature_of_defect || '',
+          visitingTechName: entryToDelete.visitingTechName || entryToDelete.visiting_tech_name || '',
+          mfgMonthYear: entryToDelete.mfgMonthYear || entryToDelete.mfg_month_year || '',
+          pcbSrNo: entryToDelete.pcbSrNo || entryToDelete.pcb_sr_no || '',
           // Clear consumption fields
           repairDate: null,
           testing: null,

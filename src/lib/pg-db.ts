@@ -271,7 +271,7 @@ export async function updateConsolidatedDataEntryByProductSrNo(productSrNo: stri
       paramCount++;
     }
     if (entry.dcDate !== undefined && entry.dcDate !== null) {
-      const dcDateValue = entry.dcDate && entry.dcDate.trim() !== '' ? convertToPostgresDate(entry.dcDate) : null;
+      const dcDateValue = convertToPostgresDate(entry.dcDate);
       updates.push(`dc_date = $${paramCount}`);
       values.push(dcDateValue);
       paramCount++;
@@ -297,7 +297,7 @@ export async function updateConsolidatedDataEntryByProductSrNo(productSrNo: stri
       paramCount++;
     }
     if (entry.dateOfPurchase !== undefined && entry.dateOfPurchase !== null) {
-      const dateOfPurchaseValue = entry.dateOfPurchase && entry.dateOfPurchase.trim() !== '' ? convertToPostgresDate(entry.dateOfPurchase) : null;
+      const dateOfPurchaseValue = convertToPostgresDate(entry.dateOfPurchase);
       updates.push(`date_of_purchase = $${paramCount}`);
       values.push(dateOfPurchaseValue);
       paramCount++;
@@ -335,12 +335,12 @@ export async function updateConsolidatedDataEntryByProductSrNo(productSrNo: stri
 
     // Handle consumption fields (only update if provided)
     if (entry.repairDate !== undefined && entry.repairDate !== null) {
-      const repairDateValue = entry.repairDate && entry.repairDate.trim() !== '' ? convertToPostgresDate(entry.repairDate) : null;
+      const repairDateValue = convertToPostgresDate(entry.repairDate);
       updates.push(`repair_date = $${paramCount}`);
       values.push(repairDateValue);
       paramCount++;
     } else if (entry.repair_date !== undefined && entry.repair_date !== null) {
-      const repairDateValue = entry.repair_date && entry.repair_date.trim() !== '' ? convertToPostgresDate(entry.repair_date) : null;
+      const repairDateValue = convertToPostgresDate(entry.repair_date);
       updates.push(`repair_date = $${paramCount}`);
       values.push(repairDateValue);
       paramCount++;
@@ -432,7 +432,7 @@ export async function updateConsolidatedDataEntryByProductSrNo(productSrNo: stri
     }
 
     if ((entry.dispatchDate !== undefined && entry.dispatchDate !== null) || (entry.dispatch_date !== undefined && entry.dispatch_date !== null)) {
-      const dispatchDateValue = (entry.dispatchDate || entry.dispatch_date) && (entry.dispatchDate || entry.dispatch_date).trim() !== '' ? convertToPostgresDate(entry.dispatchDate || entry.dispatch_date) : null;
+      const dispatchDateValue = convertToPostgresDate(entry.dispatchDate || entry.dispatch_date);
       updates.push(`dispatch_date = $${paramCount}`);
       values.push(dispatchDateValue);
       paramCount++;
@@ -723,10 +723,10 @@ export async function saveConsolidatedDataEntry(entry: any, sessionDcNumber?: st
     console.log('All required fields present');
 
     // Handle empty dates by converting them to NULL
-    const dcDateValue = entry.dcDate && entry.dcDate.trim() !== '' ? convertToPostgresDate(entry.dcDate) : null;
-    const dateOfPurchaseValue = entry.dateOfPurchase && entry.dateOfPurchase.trim() !== '' ? convertToPostgresDate(entry.dateOfPurchase) : null;
-    const repairDateValue = entry.repairDate && entry.repairDate.trim() !== '' ? convertToPostgresDate(entry.repairDate) : null;
-    const dispatchDateValue = entry.dispatchDate && entry.dispatchDate.trim() !== '' ? convertToPostgresDate(entry.dispatchDate) : null;
+    const dcDateValue = convertToPostgresDate(entry.dcDate);
+    const dateOfPurchaseValue = convertToPostgresDate(entry.dateOfPurchase);
+    const repairDateValue = convertToPostgresDate(entry.repairDate);
+    const dispatchDateValue = convertToPostgresDate(entry.dispatchDate);
 
     console.log('Converted dates - DC:', dcDateValue, 'Purchase:', dateOfPurchaseValue, 'Repair:', repairDateValue, 'Dispatch:', dispatchDateValue);
 
@@ -836,7 +836,7 @@ export async function updateConsolidatedDataEntry(id: string, entry: any): Promi
       paramCount++;
     }
     if (entry.dcDate !== undefined && entry.dcDate !== null) {
-      const dcDateValue = entry.dcDate && entry.dcDate.trim() !== '' ? convertToPostgresDate(entry.dcDate) : null;
+      const dcDateValue = convertToPostgresDate(entry.dcDate);
       updates.push(`dc_date = $${paramCount}`);
       values.push(dcDateValue);
       paramCount++;
@@ -862,7 +862,7 @@ export async function updateConsolidatedDataEntry(id: string, entry: any): Promi
       paramCount++;
     }
     if (entry.dateOfPurchase !== undefined && entry.dateOfPurchase !== null) {
-      const dateOfPurchaseValue = entry.dateOfPurchase && entry.dateOfPurchase.trim() !== '' ? convertToPostgresDate(entry.dateOfPurchase) : null;
+      const dateOfPurchaseValue = convertToPostgresDate(entry.dateOfPurchase);
       updates.push(`date_of_purchase = $${paramCount}`);
       values.push(dateOfPurchaseValue);
       paramCount++;
@@ -900,7 +900,7 @@ export async function updateConsolidatedDataEntry(id: string, entry: any): Promi
 
     // Handle consumption fields (only update if provided)
     if (entry.repairDate !== undefined && entry.repairDate !== null) {
-      const repairDateValue = entry.repairDate && entry.repairDate.trim() !== '' ? convertToPostgresDate(entry.repairDate) : null;
+      const repairDateValue = convertToPostgresDate(entry.repairDate);
       updates.push(`repair_date = $${paramCount}`);
       values.push(repairDateValue);
       paramCount++;
@@ -992,12 +992,12 @@ export async function updateConsolidatedDataEntry(id: string, entry: any): Promi
     }
 
     if (entry.dispatchDate !== undefined && entry.dispatchDate !== null) {
-      const dispatchDateValue = entry.dispatchDate && entry.dispatchDate.trim() !== '' ? convertToPostgresDate(entry.dispatchDate) : null;
+      const dispatchDateValue = convertToPostgresDate(entry.dispatchDate);
       updates.push(`dispatch_date = $${paramCount}`);
       values.push(dispatchDateValue);
       paramCount++;
     } else if (entry.dispatch_date !== undefined && entry.dispatch_date !== null) {
-      const dispatchDateValue = entry.dispatch_date && entry.dispatch_date.trim() !== '' ? convertToPostgresDate(entry.dispatch_date) : null;
+      const dispatchDateValue = convertToPostgresDate(entry.dispatch_date);
       updates.push(`dispatch_date = $${paramCount}`);
       values.push(dispatchDateValue);
       paramCount++;
@@ -1038,7 +1038,18 @@ export async function deleteConsolidatedDataEntry(id: string): Promise<boolean> 
 }
 
 // Helper function to convert date to PostgreSQL compatible format (YYYY-MM-DD)
-export function convertToPostgresDate(dateStr: string | null): string | null {
+export function convertToPostgresDate(dateInput: any): string | null {
+  if (!dateInput) return null;
+  
+  // Handle Date objects directly
+  if (dateInput instanceof Date) {
+    if (isNaN(dateInput.getTime())) return null; // Invalid date
+    return dateInput.toISOString().split('T')[0];
+  }
+  
+  // Handle strings safely without crashing
+  const dateStr = typeof dateInput === 'string' ? dateInput.trim() : String(dateInput).trim();
+  if (dateStr === '') return null;
   if (!dateStr || dateStr.trim() === '') {
     return null;
   }
@@ -1144,9 +1155,51 @@ export async function searchConsolidatedDataEntriesByPcb(dcNo?: string, partCode
     }
 
     if (pcbSrNo && pcbSrNo.trim() !== '') {
-      query += ` AND pcb_sr_no = $${paramCount}`;
-      params.push(pcbSrNo);
-      paramCount++;
+      // Allow searching with or without the trailing check digit (error bit)
+      // AND with or without the legacy '0' separator between PartCode and MonthCode
+
+      const permutations = [pcbSrNo]; // 1. Exact match (New format: ES971039B260247R)
+
+      if (pcbSrNo.length > 14) {
+        // 2. Base match without check digit (ES971039B260247)
+        const basePcbSrNo = pcbSrNo.substring(0, pcbSrNo.length - 1);
+        permutations.push(basePcbSrNo);
+
+        // Calculate where to insert the legacy '0'
+        // New Format: ES + PartCode(N) + MonthCode(1) + Year(2) + SrNo(4) + Check(1)
+        // Example: ES971039B262427R
+        // Legacy Format: ES + PartCode(N) + MonthCode(1) + Year(2) + '0' + SrNo(4) (usually no check digit)
+        // Example: ES971039B2602427
+
+        // We know SrNo is 4 digits. Check digit is 1 char. Total 5 chars at the end.
+        // So the MonthYear part ends right before the last 5 characters.
+        if (pcbSrNo.length >= 10) { // Safety check for minimum expected length
+          const beforeSrNo = pcbSrNo.substring(0, pcbSrNo.length - 5);
+          const srNoAndCheck = pcbSrNo.substring(pcbSrNo.length - 5);
+
+          const legacyWithCheck = `${beforeSrNo}0${srNoAndCheck}`;
+          const legacyBase = legacyWithCheck.substring(0, legacyWithCheck.length - 1);
+
+          // 3. Legacy match with check digit
+          permutations.push(legacyWithCheck);
+          // 4. Legacy match without check digit
+          permutations.push(legacyBase);
+        }
+
+        // Build the dynamic OR clause
+        const orClauses = [];
+        for (const perm of permutations) {
+          orClauses.push(`pcb_sr_no = $${paramCount}`);
+          params.push(perm);
+          paramCount++;
+        }
+
+        query += ` AND (${orClauses.join(' OR ')})`;
+      } else {
+        query += ` AND pcb_sr_no = $${paramCount}`;
+        params.push(pcbSrNo);
+        paramCount++;
+      }
     }
 
     query += ' ORDER BY created_at DESC';
