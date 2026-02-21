@@ -1268,97 +1268,27 @@ export async function removeUnusedColumnsFromConsolidatedData() {
   }
 }
 
-// Get expected PCB Serial Number Sequence (Global across all part codes for the month)
-export async function getNextGlobalPcbSequence(mfgMonthYear: string): Promise<string> {
+// Get next SR No: MAX(sr_no) for the current calendar month + 1.
+// Resets to 1 at the start of each new month.
+export async function getNextGlobalPcbSequence(_mfgMonthYear?: string): Promise<string> {
   try {
-    // 1. Determine Month Code and Year from input
-    let dateObj = new Date();
-    if (mfgMonthYear) {
-      if (mfgMonthYear.includes('-')) {
-        const parts = mfgMonthYear.split('-');
-        if (parts.length >= 2) dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1);
-      } else if (mfgMonthYear.includes('/')) {
-        const parts = mfgMonthYear.split('/');
-        if (parts.length >= 2) dateObj = new Date(parseInt(parts[1]), parseInt(parts[0]) - 1);
-      } else {
-        const parsed = new Date(mfgMonthYear);
-        if (!isNaN(parsed.getTime())) dateObj = parsed;
-      }
-    }
-
-    // Format: ES + PartCode(7) + 0 + MonthCode(1) + Year(2) + SrNo(4) + CheckDigit(1)
-    // We need to match MonthCode + Year (e.g., 'A24') which is at index 10, 11, 12 (0-indexed)
-    // actually index 10 is MonthCode, 11-12 is Year.
-    // Index: 
-    // E S P P P P P P P 0 M Y Y S S S S C
-    // 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7
-    // So MonthCode is at index 10, Year is at 11-12. Sequence is 13-16.
-
-    const { getMonthCode } = await import('./pcb-utils');
-    const monthCode = getMonthCode(dateObj.getMonth());
-    const yearStr = String(dateObj.getFullYear()).slice(-2);
-    const searchSuffix = `${monthCode}${yearStr}`;
-    const likePattern = `ES%${searchSuffix}_____`;
-
-
-
-    // Query to find all sequence numbers for this month/year combo
-    // We filter by entries containing the pattern: ES%B26%
-    // This allows us to handle both formats:
-    // 1. With Check Digit: ...SSSS C
-    // 2. Without Check Digit: ...SSSS
-
-    // We select the substring logic in JS for robustness
-    const query = `
-      SELECT pcb_sr_no
+    // Find the highest sr_no among rows inserted in the current calendar month
+    const result = await pool.query(`
+      SELECT MAX(CAST(sr_no AS INTEGER)) AS max_sr_no
       FROM consolidated_data
-      WHERE pcb_sr_no LIKE $1
-      AND LENGTH(pcb_sr_no) >= 14 
-    `;
+      WHERE
+        sr_no ~ '^[0-9]+$'
+        AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_TIMESTAMP)
+    `);
 
-    const result = await pool.query(query, [likePattern]);
+    const maxSrNo = result.rows[0]?.max_sr_no ?? 0;
+    const nextSrNo = (maxSrNo ?? 0) + 1;
 
-    let maxSeq = 0;
+    console.log(`Max SR No this month: ${maxSrNo}, Next SR No: ${nextSrNo}`);
 
-    result.rows.forEach(row => {
-      const pcb = row.pcb_sr_no;
-      if (!pcb) return;
-
-      const len = pcb.length;
-
-      // Candidate 1: Last 4 digits (Assumes NO check digit or 5-digit seq ending in 4)
-      const last4 = pcb.substring(len - 4);
-      const val1 = parseInt(last4, 10);
-
-      // Candidate 2: 4 digits before last char (Assumes 1 char check digit)
-      const fourBeforeLast = pcb.substring(len - 5, len - 1);
-      const val2 = parseInt(fourBeforeLast, 10);
-
-      // Check which one is valid and higher
-      if (!isNaN(val1)) {
-        if (val1 > maxSeq) maxSeq = val1;
-      }
-
-      if (!isNaN(val2)) {
-        // Only consider val2 if it's reasonable (e.g. within 0-9999). 
-        // Logic: If val1 is 2467 and val2 is 0246 (from 02467), val1 is higher.
-        // If pcb is ...0246C, val1 is 246C (NaN), val2 is 0246. val2 wins.
-        if (val2 > maxSeq) maxSeq = val2;
-      }
-
-      // Special case: 5 digit sequence at end? e.g. ...02467
-      // Last 5 digits: 02467 -> 2467.
-      // Already covered by val1 (2467 from '2467') vs val2 (0246 from '0246').
-      // 2467 > 246. So maxSeq becomes 2467. Correct.
-    });
-
-    const nextSeq = maxSeq + 1;
-
-    console.log(`Max sequence found: ${maxSeq}, Next sequence: ${nextSeq}`);
-
-    return String(nextSeq).padStart(4, '0');
+    return String(nextSrNo).padStart(4, '0');
   } catch (error) {
-    console.error('Error getting next global PCB sequence:', error);
+    console.error('Error getting next SR No:', error);
     return '0001'; // Fallback
   }
 }

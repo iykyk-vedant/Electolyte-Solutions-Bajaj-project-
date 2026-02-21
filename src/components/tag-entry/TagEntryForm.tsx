@@ -120,7 +120,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
 
   const [formData, setFormData] = useState<TagEntry>({
     id: '',
-    srNo: '001',
+    srNo: '0001',
     dcNo: sessionDcNumber || localStorage.getItem('selectedDcNumber') || '',
     dcDate: '',
     branch: '',
@@ -173,28 +173,6 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
           }));
 
           setSavedEntries(tagEntries);
-
-          // Set initial SR No based on Month/Year (Global Sequence)
-          if (formData.mfgMonthYear && formData.mfgMonthYear.length >= 7) {
-            console.log('Loading Global PCB Sequence for Month:', formData.mfgMonthYear);
-            const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
-            const seqResult = await getNextGlobalPcbSequenceAction(formData.mfgMonthYear);
-            console.log('Global PCB Sequence result:', seqResult);
-            if (seqResult.success && seqResult.nextSeq) {
-              console.log('Setting SR No to:', seqResult.nextSeq);
-              setFormData(prev => ({
-                ...prev,
-                srNo: seqResult.nextSeq as string
-              }));
-            }
-          } else {
-            console.log('No Month/Year, using default SR No: 0001');
-            // Fallback
-            setFormData(prev => ({
-              ...prev,
-              srNo: '0001'
-            }));
-          }
         }
       } catch (e) {
         console.error('Error loading entries from database:', e);
@@ -215,59 +193,24 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         mfgMonthYear = `${month}/${year}`;
       }
 
-      setFormData(prev => {
-        // Calculate next sequential serial number for the selected Partcode from database
-        const partCode = initialData.partCode || prev.partCode; // Keep for context
-        let newSrNo = prev.srNo; // Default to current srNo
-
-        // Use database-based SR No generation
-        const generateSrNoFromDb = async () => {
-          if (mfgMonthYear) {
-            try {
-              const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
-              const seqResult = await getNextGlobalPcbSequenceAction(mfgMonthYear);
-              if (seqResult.success && seqResult.nextSeq) {
-                return seqResult.nextSeq;
-              }
-            } catch (error) {
-              console.error('Error generating SR No from DB:', error);
-            }
-          }
-          return '0001'; // Fallback
-        };
-
-        // Don't override part code if user has selected one or DC is locked
-        const newFormData = {
-          id: initialData.id || prev.id,
-          srNo: newSrNo, // Will be updated asynchronously
-          dcNo: initialData.dcNo || prev.dcNo,
-          branch: initialData.branch || prev.branch,
-          bccdName: initialData.bccdName || prev.bccdName,
-          // Don't override productDescription if partCode is already set
-          productDescription: (prev.partCode || initialData.sparePartCode) ? prev.productDescription : (initialData.productDescription || prev.productDescription),
-          productSrNo: initialData.productSrNo || prev.productSrNo,
-          dateOfPurchase: initialData.dateOfPurchase || prev.dateOfPurchase,
-          complaintNo: initialData.complaintNo || prev.complaintNo,
-          // partCode should only come from dropdown, not from image extraction
-          // Preserve user's selection if they've already selected a partCode
-          // Also preserve locked partCode if DC is locked
-          partCode: (userSelectedPartCode || isDcLocked) ? prev.partCode : '', // Don't override if user has selected a part code or DC is locked
-          natureOfDefect: initialData.natureOfDefect || prev.natureOfDefect,
-          visitingTechName: initialData.technicianName || prev.visitingTechName,
-          mfgMonthYear: mfgMonthYear || prev.mfgMonthYear,
-          pcbSrNo: initialData.pcbSrNo || prev.pcbSrNo,
-        };
-
-        // Update SR No asynchronously
-        generateSrNoFromDb().then(dbSrNo => {
-          setFormData(prevForm => ({
-            ...prevForm,
-            srNo: dbSrNo
-          }));
-        });
-
-        return newFormData;
-      });
+      setFormData(prev => ({
+        id: initialData.id || prev.id,
+        srNo: prev.srNo, // Keep current SR No (set by mount effect)
+        dcNo: initialData.dcNo || prev.dcNo,
+        branch: initialData.branch || prev.branch,
+        bccdName: initialData.bccdName || prev.bccdName,
+        // Don't override productDescription if partCode is already set
+        productDescription: (prev.partCode || initialData.sparePartCode) ? prev.productDescription : (initialData.productDescription || prev.productDescription),
+        productSrNo: initialData.productSrNo || prev.productSrNo,
+        dateOfPurchase: initialData.dateOfPurchase || prev.dateOfPurchase,
+        complaintNo: initialData.complaintNo || prev.complaintNo,
+        // partCode should only come from dropdown, not from image extraction
+        partCode: (userSelectedPartCode || isDcLocked) ? prev.partCode : '',
+        natureOfDefect: initialData.natureOfDefect || prev.natureOfDefect,
+        visitingTechName: initialData.technicianName || prev.visitingTechName,
+        mfgMonthYear: mfgMonthYear || prev.mfgMonthYear,
+        pcbSrNo: initialData.pcbSrNo || prev.pcbSrNo,
+      }));
     }
   }, [initialData, savedEntries, userSelectedPartCode]);
 
@@ -302,39 +245,21 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     }
   }, [formData.partCode, formData.srNo, formData.mfgMonthYear]);
 
-  // Initialize serial number on mount based on Current System Date
-  // Decoupled from mfgMonthYear input field to prevent unwanted resets
+  // Fetch next SR No on mount: MAX(sr_no) for current calendar month + 1.
+  // Automatically resets to 0001 at the start of each new month.
   useEffect(() => {
-    const initSequence = async () => {
+    const fetchNextSrNo = async () => {
       try {
-        // Use current date (MM/YYYY) for sequence generation
-        const now = new Date();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const year = now.getFullYear();
-        const currentMonthYear = `${month}/${year}`;
-
-        console.log('Initializing global sequence for Current Month:', currentMonthYear);
         const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
-        const seqResult = await getNextGlobalPcbSequenceAction(currentMonthYear);
-
+        const seqResult = await getNextGlobalPcbSequenceAction('');
         if (seqResult.success && seqResult.nextSeq) {
-          setFormData(prev => {
-            // Only set if not already set (e.g. from session)
-            if (prev.srNo === '0001' || !prev.srNo) {
-              return {
-                ...prev,
-                srNo: seqResult.nextSeq as string
-              };
-            }
-            return prev;
-          });
+          setFormData(prev => ({ ...prev, srNo: seqResult.nextSeq as string }));
         }
       } catch (e) {
-        console.error('Error initializing sequence:', e);
+        console.error('Error fetching next SR No:', e);
       }
     };
-
-    initSequence();
+    fetchNextSrNo();
   }, []); // Run ONCE on mount
 
 
@@ -455,7 +380,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       const newSrNo = currentSrNo + 1;
       setFormData(prev => ({
         ...prev,
-        srNo: String(newSrNo).padStart(3, '0')
+        srNo: String(newSrNo).padStart(4, '0')
       }));
     }
   };
@@ -466,7 +391,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       const newSrNo = currentSrNo - 1;
       setFormData(prev => ({
         ...prev,
-        srNo: String(newSrNo).padStart(3, '0')
+        srNo: String(newSrNo).padStart(4, '0')
       }));
     }
   };
@@ -531,26 +456,18 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         console.log('SAVE SUCCESSFUL');
         alert('Entry saved successfully!');
 
-        // Prepare for next entry:
-        // 1. Fetch next global sequence number for CURRENT Month (System Date)
-        // irrespective of what month was just entered in the form
+        // Fetch next SR No after save (MAX of current month + 1)
         let nextSrNo = undefined;
         let preservedMonth = formData.mfgMonthYear;
 
         try {
-          const now = new Date();
-          const month = String(now.getMonth() + 1).padStart(2, '0');
-          const year = now.getFullYear();
-          const currentMonthYear = `${month}/${year}`;
-
-          console.log('Fetching next global sequence for Current Month:', currentMonthYear);
           const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
-          const seqResult = await getNextGlobalPcbSequenceAction(currentMonthYear);
+          const seqResult = await getNextGlobalPcbSequenceAction('');
           if (seqResult.success && seqResult.nextSeq) {
             nextSrNo = seqResult.nextSeq;
           }
         } catch (err) {
-          console.error('Error fetching next sequence after save:', err);
+          console.error('Error fetching next SR No after save:', err);
         }
 
         handleClear(nextSrNo, preservedMonth);

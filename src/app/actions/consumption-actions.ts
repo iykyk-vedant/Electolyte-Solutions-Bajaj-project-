@@ -138,16 +138,16 @@ export async function saveConsolidatedData(data: any, sessionDcNumber?: string, 
   }
 }
 
-// Server action to get next global PCB sequence
-export async function getNextGlobalPcbSequenceAction(mfgMonthYear: string) {
-  console.log('Server Action: Fetching global PCB sequence for', mfgMonthYear);
+// Server action to get next SR No (MAX of current calendar month + 1)
+export async function getNextGlobalPcbSequenceAction(mfgMonthYear?: string) {
+  console.log('Server Action: Fetching next SR No');
   try {
     const { getNextGlobalPcbSequence } = await import('@/lib/pg-db');
     const nextSeq = await getNextGlobalPcbSequence(mfgMonthYear);
     return { success: true, nextSeq };
   } catch (error) {
-    console.error('Error getting next global PCB sequence:', error);
-    return { success: false, error: 'Failed to get next PCB sequence' };
+    console.error('Error getting next SR No:', error);
+    return { success: false, error: 'Failed to get next SR No' };
   }
 }
 
