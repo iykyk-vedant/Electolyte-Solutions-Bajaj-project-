@@ -612,9 +612,9 @@ export default function Home() {
   };
 
   // Handle Excel export for Tag Entry
-  const handleTagEntryExportExcel = async () => {
+  const handleTagEntryExportExcel = async (dcNo?: string) => {
     try {
-      await exportTagEntriesToExcel();
+      await exportTagEntriesToExcel(dcNo);
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Failed to export Excel file');
     }
