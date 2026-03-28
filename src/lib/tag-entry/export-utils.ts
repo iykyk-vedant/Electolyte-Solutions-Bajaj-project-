@@ -23,9 +23,9 @@ export async function exportTagEntriesToExcel(dcNo?: string): Promise<void> {
       
       entries = result.data;
     } else {
-      // Get all tag entries from the database
-      const { getConsolidatedDataEntries } = await import('@/app/actions/consumption-actions');
-      const result = await getConsolidatedDataEntries();
+      // Get ALL tag entries from the database (no pagination limit)
+      const { getAllConsolidatedDataEntriesAction } = await import('@/app/actions/consumption-actions');
+      const result = await getAllConsolidatedDataEntriesAction();
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch entries from database');
@@ -59,11 +59,12 @@ export async function exportTagEntriesToExcel(dcNo?: string): Promise<void> {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    // Use DC number in filename if provided
+    // Filename: {DC_NO}_{date}.xlsx
+    const dateStamp = new Date().toISOString().split('T')[0];
     if (dcNo) {
-      link.download = `Tag_Entries_Export_DC_${dcNo}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      link.download = `${dcNo}_${dateStamp}.xlsx`;
     } else {
-      link.download = `Tag_Entries_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      link.download = `All_Entries_${dateStamp}.xlsx`;
     }
     document.body.appendChild(link);
     link.click();

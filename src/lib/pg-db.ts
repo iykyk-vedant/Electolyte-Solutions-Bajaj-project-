@@ -805,6 +805,20 @@ export async function getConsolidatedDataEntriesPaginated(limit: number, offset:
   }
 }
 
+// Get ALL consolidated data entries (no pagination, for export)
+export async function getAllConsolidatedDataEntries(): Promise<any[]> {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM consolidated_data
+       ORDER BY part_code ASC, CAST(NULLIF(REGEXP_REPLACE(sr_no, '[^0-9]', '', 'g'), '') AS INTEGER) ASC NULLS LAST`
+    );
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching all consolidated data entries:', error);
+    return [];
+  }
+}
+
 // Get total count of consolidated data entries
 export async function getConsolidatedDataCount(): Promise<number> {
   try {

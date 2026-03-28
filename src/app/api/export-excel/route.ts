@@ -1,143 +1,105 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
-import path from 'path';
-import fs from 'fs';
-import { TagEntry } from '@/lib/tag-entry/types';
 
 /**
  * API Route: /api/export-excel
- * 
- * This endpoint generates an Excel file based on the template Export_RC252700000456_971040.xlsx
- * and populates it with tag entries from localStorage.
- * 
- * The exported file matches the exact structure, column order, naming conventions,
- * styling, and formatting used in the reference file.
+ *
+ * Exports consolidated_data entries to Excel.
+ * The Excel columns match the DB schema exactly — no renaming, no mapping.
+ * Entries are sorted by part_code ASC, then sr_no ASC (numeric).
  */
+
+// DB columns in the exact order they appear in the consolidated_data table
+const DB_COLUMNS = [
+  'id',
+  'sr_no',
+  'dc_no',
+  'dc_date',
+  'branch',
+  'bccd_name',
+  'product_description',
+  'product_sr_no',
+  'date_of_purchase',
+  'complaint_no',
+  'part_code',
+  'defect',
+  'visiting_tech_name',
+  'mfg_month_year',
+  'repair_date',
+  'testing',
+  'failure',
+  'status',
+  'pcb_sr_no',
+  'analysis',
+  'component_change',
+  'engg_name',
+  'tag_entry_by',
+  'consumption_entry_by',
+  'dispatch_entry_by',
+  'dispatch_date',
+  'created_at',
+  'updated_at',
+];
 
 export async function POST(request: NextRequest) {
   try {
-    // Get request body to check if DC number is provided
     const body = await request.json();
     const { entries, dcNo } = body;
 
     if (!entries || entries.length === 0) {
-      return NextResponse.json(
-        { error: 'No entries to export' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No entries to export' }, { status: 400 });
     }
 
-    // Path to the template Excel file
-    const templatePath = path.join(process.cwd(), 'Export_RC252700000456_971040.xlsx');
+    // Sort: part_code ASC, then sr_no ASC (numeric)
+    const sortedEntries = [...entries].sort((a: any, b: any) => {
+      const partA = (a.part_code || '').toString().toLowerCase();
+      const partB = (b.part_code || '').toString().toLowerCase();
+      if (partA < partB) return -1;
+      if (partA > partB) return 1;
+      const srA = parseInt(a.sr_no || '0', 10);
+      const srB = parseInt(b.sr_no || '0', 10);
+      return srA - srB;
+    });
 
-    // Check if template exists
-    if (!fs.existsSync(templatePath)) {
-      return NextResponse.json(
-        { error: 'Template file not found' },
-        { status: 404 }
-      );
-    }
-
-    // Load the template workbook
+    // Create workbook & worksheet
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(templatePath);
-    
-    // Get the worksheet (should be named "ExportData" based on template)
-    let worksheet = workbook.getWorksheet('ExportData');
-    if (!worksheet) {
-      // If sheet doesn't exist, use the first sheet
-      worksheet = workbook.worksheets[0];
-    }
-        
-    // Clear autoFilter to prevent conflicts
-    worksheet.autoFilter = undefined;
-        
-    // Clear all data rows (keep header row)
-    const headerRow = worksheet.getRow(1);
-    worksheet.spliceRows(2, worksheet.rowCount - 1);
+    const worksheet = workbook.addWorksheet('consolidated_data');
 
-    // Map tag entries to Excel format matching the template structure
-    // Column order matches the template:
-    // 1. Sr_No, 2. DC_No, 3. DC_Date, 4. Branch, 5. BCCD_Name, 6. Product_Description,
-    // 7. Product_Sr_No, 8. Date_of_Purchase, 9. Complaint_No, 10. PartCode, 11. Defect,
-    // 12. Visiting_Tech_Name, 13. Mfg_Month_Year, 14. Repair_Date, 15. Defect_Age,
-    // 16. PCB_Sr_No, 17. RF_Observation, 18. Testing, 19. Failuer, 20. Analysis,
-    // 21. Component_Consumption, 22. Status, 23. Send_Date, 24. Engg_Name,
-    // 25. Tag_Entry_By, 26. Consumption_Entry_By, 27. Dispatch_Entry_By,
-    // 28. Tag_Entry, 29. Tag_Entry_Date, 30. Consumption_Entry, 31. Consumption_Entry_Date
+    // Header row — exact DB column names
+    const headerRow = worksheet.addRow(DB_COLUMNS);
+    headerRow.eachCell((cell) => {
+      cell.font = { name: 'Calibri', size: 11, bold: true };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD9D9D9' },
+      };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      };
+    });
 
-    // Helper function to format dates for Excel
-    function formatDateForExcel(dateValue: string | Date | null | undefined): string {
-      if (!dateValue) return '';
-      
-      // If it's already in DD/MM/YYYY format, return as is
-      if (typeof dateValue === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dateValue)) {
-        return dateValue;
-      }
-      
-      // If it's a date string, parse it and convert to DD/MM/YYYY format
-      let date: Date;
-      if (typeof dateValue === 'string') {
-        // Handle various date formats (YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, etc.)
-        date = new Date(dateValue);
-      } else {
-        date = dateValue as Date;
-      }
-      
-      // Check if date is valid
-      if (isNaN(date.getTime())) {
-        return '';
-      }
-      
-      // Format as DD/MM/YYYY
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      
-      return `${day}/${month}/${year}`;
-    }
-    
-    entries.forEach((entry: any, index: number) => {
-      const row = worksheet.addRow([]);
-      
-      // Get current date for timestamps
-      const currentDate = new Date();
-      const dateStr = currentDate.toLocaleDateString('en-GB'); // DD/MM/YYYY format
-      const dateTimeStr = currentDate.toLocaleDateString('en-GB'); // DD/MM/YYYY format for dates in Excel
+    // Data rows — write each DB column value as-is
+    sortedEntries.forEach((entry: any) => {
+      const rowValues = DB_COLUMNS.map((col) => {
+        const val = entry[col];
+        if (val === null || val === undefined) return '';
+        // Format Date objects to readable string
+        if (val instanceof Date) {
+          return val.toISOString().split('T')[0]; // YYYY-MM-DD
+        }
+        // If it looks like a date string from Postgres (with T and timezone), trim it
+        if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
+          return val.split('T')[0];
+        }
+        return val;
+      });
 
-      // Map each field according to template column order
-      row.getCell(1).value = entry.sr_no || (index + 1).toString(); // Sr_No
-      row.getCell(2).value = entry.dc_no || ''; // DC_No
-      row.getCell(3).value = formatDateForExcel(entry.dc_date) || dateStr; // DC_Date
-      row.getCell(4).value = entry.branch || ''; // Branch
-      row.getCell(5).value = entry.bccd_name || entry.bccdName || ''; // BCCD_Name
-      row.getCell(6).value = entry.product_description || entry.productDescription || ''; // Product_Description
-      row.getCell(7).value = entry.product_sr_no || entry.productSrNo || ''; // Product_Sr_No
-      row.getCell(8).value = formatDateForExcel(entry.date_of_purchase || entry.dateOfPurchase) || ''; // Date_of_Purchase
-      row.getCell(9).value = entry.complaint_no || entry.complaintNo || ''; // Complaint_No
-      row.getCell(10).value = entry.part_code || entry.partCode || ''; // PartCode
-      row.getCell(11).value = entry.nature_of_defect || entry.defect || ''; // Defect
-      row.getCell(12).value = entry.visiting_tech_name || entry.visitingTechName || ''; // Visiting_Tech_Name
-      row.getCell(13).value = entry.mfg_month_year || entry.mfgMonthYear || ''; // Mfg_Month_Year
-      row.getCell(14).value = formatDateForExcel(entry.repair_date || entry.repairDate) || ''; // Repair_Date
-      row.getCell(15).value = entry.defect_age || entry.defectAge || ''; // Defect_Age
-      row.getCell(16).value = entry.pcb_sr_no || entry.pcbSrNo || ''; // PCB_Sr_No
-      row.getCell(17).value = entry.testing || ''; // Testing
-      row.getCell(18).value = entry.failure || ''; // Failure
-      row.getCell(19).value = entry.analysis || ''; // Analysis
-      row.getCell(20).value = entry.component_consumption || entry.componentConsumption || ''; // Component_Consumption
-      row.getCell(21).value = entry.status || ''; // Status
-      row.getCell(22).value = formatDateForExcel(entry.send_date || entry.dispatch_date || entry.sendDate) || ''; // Send_Date
-      row.getCell(23).value = entry.engg_name || entry.enggName || ''; // Engg_Name
-      row.getCell(24).value = entry.tag_entry_by || entry.tagEntryBy || ''; // Tag_Entry_By
-      row.getCell(25).value = entry.consumption_entry_by || entry.consumptionEntryBy || ''; // Consumption_Entry_By
-      row.getCell(26).value = entry.dispatch_entry_by || entry.dispatchEntryBy || ''; // Dispatch_Entry_By
-      row.getCell(28).value = 'Yes'; // Tag_Entry (mark as Yes since we're exporting tag entries)
-      row.getCell(29).value = dateTimeStr; // Tag_Entry_Date (current date)
-      row.getCell(30).value = 'Yes'; // Consumption_Entry (mark as Yes since we're exporting consolidated entries)
-      row.getCell(31).value = dateTimeStr; // Consumption_Entry_Date (current date)
-
-      // Apply formatting to match template style
+      const row = worksheet.addRow(rowValues);
       row.eachCell((cell) => {
         cell.font = { name: 'Calibri', size: 11 };
         cell.alignment = { vertical: 'middle', horizontal: 'left' };
@@ -145,29 +107,12 @@ export async function POST(request: NextRequest) {
           top: { style: 'thin' },
           left: { style: 'thin' },
           bottom: { style: 'thin' },
-          right: { style: 'thin' }
+          right: { style: 'thin' },
         };
       });
     });
 
-    // Apply header row formatting (if not already formatted)
-    headerRow.eachCell((cell) => {
-      cell.font = { name: 'Calibri', size: 11, bold: true };
-      cell.alignment = { vertical: 'middle', horizontal: 'center' };
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFD9D9D9' } // Light gray background
-      };
-      cell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' }
-      };
-    });
-    
-    // Auto-size columns to fit content
+    // Auto-size columns
     worksheet.columns.forEach((column) => {
       if (column && column.eachCell) {
         let maxLength = 0;
@@ -179,28 +124,18 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // Set proper autoFilter range after data is populated
-    if (entries.length > 0) {
-      // Apply autoFilter to the range that contains data: A1 to AD(n+1) where n is number of entries
-      worksheet.autoFilter = `A1:AD${entries.length + 1}`;
-    } else {
-      // Clear autoFilter if no data
-      worksheet.autoFilter = undefined;
+    // AutoFilter
+    if (sortedEntries.length > 0) {
+      worksheet.autoFilter = `A1:${String.fromCharCode(64 + DB_COLUMNS.length)}${sortedEntries.length + 1}`;
     }
 
-    // Generate Excel file buffer
+    // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
 
-    // Generate filename with DC number if provided, otherwise with timestamp
-    let filename;
-    if (dcNo) {
-      filename = `Tag_Entries_Export_DC_${dcNo}_${new Date().toISOString().replace(/[:.]/g, '-').split('T')[0]}.xlsx`;
-    } else {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
-      filename = `Tag_Entries_Export_${timestamp}.xlsx`;
-    }
+    // Filename: {DC_NO}_{date}.xlsx
+    const dateStamp = new Date().toISOString().split('T')[0];
+    const filename = dcNo ? `${dcNo}_${dateStamp}.xlsx` : `All_Entries_${dateStamp}.xlsx`;
 
-    // Return the file as a download
     return new NextResponse(buffer, {
       status: 200,
       headers: {
@@ -216,4 +151,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

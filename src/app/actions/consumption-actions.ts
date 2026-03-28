@@ -330,6 +330,24 @@ export async function updateConsolidatedDataEntryByProductSrNoAction(productSrNo
   }
 }
 
+// Server action to get ALL consolidated data entries (no pagination, for export)
+export async function getAllConsolidatedDataEntriesAction() {
+  try {
+    const { getAllConsolidatedDataEntries } = await import('@/lib/pg-db');
+    const entries = await getAllConsolidatedDataEntries();
+    return {
+      success: true,
+      data: entries
+    };
+  } catch (error) {
+    console.error('Error fetching all consolidated data entries:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
+    };
+  }
+}
+
 // Server action to get consolidated data entries by DC number
 export async function getConsolidatedDataEntriesByDcNoAction(dcNo: string) {
   try {
