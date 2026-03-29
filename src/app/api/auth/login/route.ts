@@ -43,6 +43,18 @@ export async function POST(request: NextRequest) {
 
     // Get the session to extract tokens
     const session = result.data?.session;
+
+    // Fetch full user record from the database to get the Role
+    let dbRole = 'USER';
+    try {
+      const { default: pool } = await import('@/lib/pg-db');
+      const userResult = await pool.query('SELECT role FROM users WHERE email = $1', [email]);
+      if (userResult.rows.length > 0 && userResult.rows[0].role) {
+        dbRole = userResult.rows[0].role;
+      }
+    } catch (e) {
+      console.error('Error fetching user role from DB:', e);
+    }
     
     // Return success response with user data and tokens
     const response = NextResponse.json({
@@ -51,9 +63,10 @@ export async function POST(request: NextRequest) {
         id: result.data?.user?.id,
         email: result.data?.user?.email,
         name: result.data?.user?.user_metadata?.name,
+        role: dbRole,
       },
-      token: session?.access_token,
-      refreshToken: session?.refresh_token,
+      token: session?.access_token || 'local-auth-token',
+      refreshToken: session?.refresh_token || 'local-refresh-token',
     }, { status: 200 });
     
     // Add CORS headers

@@ -11,9 +11,13 @@ export default function DashboardPage() {
   const { dcNumber, partCode } = useSessionData();
 
   useEffect(() => {
-    // Redirect to home page which contains the main application
+    // Redirect based on role
     if (!loading && user) {
-      router.push('/');
+      if (user.role === 'ADMIN') {
+        router.push('/admin');
+      } else {
+        router.push('/');
+      }
     }
   }, [loading, user, router]);
 

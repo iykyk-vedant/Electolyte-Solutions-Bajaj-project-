@@ -37,11 +37,11 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
   console.log('Initial props - initialData:', initialData, 'dcNumbers length:', dcNumbers.length, 'dcPartCodes keys:', Object.keys(dcPartCodes));
   console.log('Session props - DC Number:', sessionDcNumber, 'Part Code:', sessionPartCode);
 
-  // BRUTE FORCE APPROACH - Direct localStorage access
-  console.log('=== BRUTE FORCE CHECK ===');
-  const directDcNumber = localStorage.getItem('selectedDcNumber');
-  const directPartCode = localStorage.getItem('selectedPartCode');
-  console.log('Direct localStorage access - DC Number:', directDcNumber, 'Part Code:', directPartCode);
+  // SAFE APPROACH - Check if window exists before accessing localStorage
+  console.log('=== SAFE STORAGE CHECK ===');
+  const directDcNumber = typeof window !== 'undefined' ? localStorage.getItem('selectedDcNumber') : null;
+  const directPartCode = typeof window !== 'undefined' ? localStorage.getItem('selectedPartCode') : null;
+  console.log('Safe localStorage access - DC Number:', directDcNumber, 'Part Code:', directPartCode);
 
   const { isDcLocked } = useLockStore();
   const { user } = useAuth();
@@ -121,7 +121,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
   const [formData, setFormData] = useState<TagEntry>({
     id: '',
     srNo: '0001',
-    dcNo: sessionDcNumber || localStorage.getItem('selectedDcNumber') || '',
+    dcNo: sessionDcNumber || (typeof window !== 'undefined' ? localStorage.getItem('selectedDcNumber') : '') || '',
     dcDate: '',
     branch: '',
     bccdName: '',
@@ -129,7 +129,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     productSrNo: '',
     dateOfPurchase: '',
     complaintNo: '',
-    partCode: sessionPartCode || localStorage.getItem('selectedPartCode') || '',
+    partCode: sessionPartCode || (typeof window !== 'undefined' ? localStorage.getItem('selectedPartCode') : '') || '',
     natureOfDefect: '',
     visitingTechName: '',
     mfgMonthYear: '',

@@ -1282,6 +1282,59 @@ export async function removeUnusedColumnsFromConsolidatedData() {
   }
 }
 
+// Get entry counts by user for a specific date (for admin dashboard)
+export async function getAdminEntryCountsByDate(date: string): Promise<{
+  tagEntries: { user_name: string; count: number }[];
+  consumptionEntries: { user_name: string; count: number }[];
+}> {
+  try {
+    // Tag entries: count rows where tag_entry_by is set and created_at matches the date in IST
+    const tagResult = await pool.query(
+      `SELECT tag_entry_by AS user_name, COUNT(*)::int AS count
+       FROM consolidated_data
+       WHERE tag_entry_by IS NOT NULL
+         AND tag_entry_by != ''
+         AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date
+       GROUP BY tag_entry_by
+       ORDER BY tag_entry_by ASC`,
+      [date]
+    );
+
+    // Consumption entries: count rows where consumption_entry_by is set and updated_at matches the date in IST
+    const consumptionResult = await pool.query(
+      `SELECT consumption_entry_by AS user_name, COUNT(*)::int AS count
+       FROM consolidated_data
+       WHERE consumption_entry_by IS NOT NULL
+         AND consumption_entry_by != ''
+         AND (updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date
+       GROUP BY consumption_entry_by
+       ORDER BY consumption_entry_by ASC`,
+      [date]
+    );
+
+    return {
+      tagEntries: tagResult.rows,
+      consumptionEntries: consumptionResult.rows,
+    };
+  } catch (error) {
+    console.error('Error fetching admin entry counts by date:', error);
+    return { tagEntries: [], consumptionEntries: [] };
+  }
+}
+
+// Get all users from the users table (for admin dashboard)
+export async function getAllUsersFromDb(): Promise<{ id: string; email: string; name: string | null; role: string }[]> {
+  try {
+    const result = await pool.query(
+      'SELECT id, email, name, role FROM users ORDER BY name ASC, email ASC'
+    );
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching all users:', error);
+    return [];
+  }
+}
+
 // Get next SR No: MAX(sr_no) for the current calendar month + 1.
 // Resets to 1 at the start of each new month.
 export async function getNextGlobalPcbSequence(_mfgMonthYear?: string): Promise<string> {

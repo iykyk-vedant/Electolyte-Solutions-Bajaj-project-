@@ -8,7 +8,7 @@ try {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   
   // Check if the Supabase URL is valid before creating client
-  if (!supabaseUrl || supabaseUrl.includes('isloesctacdrhzhbkana.supabase.co')) {
+  if (!supabaseUrl || supabaseUrl === 'your_supabase_url_here') {
     console.warn('Supabase URL not properly configured, disabling Supabase functionality');
     supabase = null;
   } else {
@@ -159,7 +159,7 @@ export async function verifyToken(token: string): Promise<boolean> {
   try {
     // Check if Supabase environment variables are configured
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl || supabaseUrl.includes('isloesctacdrhzhbkana.supabase.co')) {
+    if (!supabaseUrl || supabaseUrl === 'your_supabase_url_here') {
       // If using default/broken Supabase URL, skip verification and assume valid
       // In production, you'd want proper JWT verification
       console.warn('Supabase URL not properly configured, skipping token verification');
@@ -258,7 +258,7 @@ export async function getCurrentUserFromDb(token?: string) {
 
     // Check if Supabase environment variables are configured
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!supabaseUrl || supabaseUrl.includes('isloesctacdrhzhbkana.supabase.co')) {
+    if (!supabaseUrl || supabaseUrl === 'your_supabase_url_here') {
       // If using default/broken Supabase URL, skip verification and return a basic user
       console.warn('Supabase URL not properly configured, returning basic user info');
       // Return a basic user object without JWT verification

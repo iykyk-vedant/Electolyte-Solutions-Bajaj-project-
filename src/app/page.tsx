@@ -125,6 +125,9 @@ export default function Home() {
       if (!user) {
         // Redirect to login if not authenticated
         router.push('/login');
+      } else if (user.role === 'ADMIN') {
+        // Redirect admin users to admin panel
+        router.push('/admin');
       }
     }
   }, [authLoading, user, router]);

@@ -31,7 +31,11 @@ export default function LoginPage() {
   useEffect(() => {
     if (!authLoading && user && !isRedirecting) {
       setIsRedirecting(true);
-      router.push('/dashboard');
+      if (user.role === 'ADMIN') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
     }
   }, [authLoading, user, isRedirecting, router]);
 
@@ -40,52 +44,40 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
-    // Validate that DC Number and Partcode are selected
-    if (!selectedDcNumber || !selectedPartCode) {
-      setError('Please select both DC Number and Partcode');
-      setLoading(false);
-      return;
-    }
+    // Validate that DC Number and Partcode are selected (skip for admin users)
+    // We'll check after login if user is admin
 
     // First: authenticate user
     const result = await signIn(email, password);
     
     if (result.success) {
       try {
+        // Check if user is admin — redirect to admin panel directly
+        if (result.user?.role === 'ADMIN') {
+          setIsRedirecting(true);
+          setTimeout(() => {
+            router.push('/admin');
+          }, 500);
+          setLoading(false);
+          return;
+        }
+
+        // For non-admin users, validate DC/partcode
+        if (!selectedDcNumber || !selectedPartCode) {
+          setError('Please select both DC Number and Partcode');
+          setLoading(false);
+          return;
+        }
+
         // Store DC Number and Partcode in localStorage/session
-        console.log('=== LOGIN SUCCESS - STORING SESSION DATA ===');
-        console.log('Values to store - DC Number:', selectedDcNumber, 'Part Code:', selectedPartCode);
-        console.log('Types - DC Number:', typeof selectedDcNumber, 'Part Code:', typeof selectedPartCode);
-        console.log('Lengths - DC Number:', selectedDcNumber?.length, 'Part Code:', selectedPartCode?.length);
-        console.log('Truthy check - DC Number:', !!selectedDcNumber, 'Part Code:', !!selectedPartCode);
-        
         localStorage.setItem('selectedDcNumber', selectedDcNumber);
         localStorage.setItem('selectedPartCode', selectedPartCode);
-        
-        // Verify immediate storage
-        const storedDc = localStorage.getItem('selectedDcNumber');
-        const storedPart = localStorage.getItem('selectedPartCode');
-        console.log('=== STORAGE VERIFICATION ===');
-        console.log('Immediately stored - DC Number:', storedDc, 'Part Code:', storedPart);
-        console.log('Match check:', storedDc === selectedDcNumber && storedPart === selectedPartCode);
-        
-        // Test retrieval in same context
-        console.log('=== CONTEXT RETRIEVAL TEST ===');
-        console.log('getSelectedDcNumber():', getSelectedDcNumber());
-        console.log('getSelectedPartCode():', getSelectedPartCode());
         
         // Redirect to dashboard
         setIsRedirecting(true);
         setTimeout(() => {
-          console.log('=== REDIRECTING TO DASHBOARD ===');
-          console.log('Final storage check before redirect - DC Number:', localStorage.getItem('selectedDcNumber'), 'Part Code:', localStorage.getItem('selectedPartCode'));
-          
-          // TEST: Manually verify the data can be retrieved
-          console.log('=== MANUAL TEST ===');
-          console.log('Manual localStorage check:', localStorage.getItem('selectedDcNumber'), localStorage.getItem('selectedPartCode'));
-          
           router.push('/dashboard');
-        }, 1000); // Increased delay to ensure data persistence
+        }, 1000);
       } catch (error) {
         setError('Failed to store session data');
       }
@@ -196,7 +188,6 @@ export default function LoginPage() {
                   setSelectedPartCode(''); // Reset partcode when DC changes
                 }}
                 className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                required
               >
                 <option value="">Select DC Number</option>
                 {dcNumbers.map((dc) => (
@@ -216,7 +207,6 @@ export default function LoginPage() {
                 value={selectedPartCode}
                 onChange={(e) => setSelectedPartCode(e.target.value)}
                 className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                required
                 disabled={!selectedDcNumber}
               >
                 <option value="">Select Partcode</option>
