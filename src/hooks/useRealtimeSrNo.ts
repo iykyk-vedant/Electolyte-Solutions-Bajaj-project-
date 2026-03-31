@@ -67,8 +67,8 @@ export function useRealtimeSrNo(initialSrNo: string = '0001'): UseRealtimeSrNoRe
         reconnectTimeoutRef.current = setTimeout(connect, delay);
       };
 
-      ws.onerror = (err) => {
-        console.error('[SR No WS] Error:', err);
+      ws.onerror = () => {
+        console.warn('[SR No WS] Connection error (will reconnect via onclose)');
         // onclose will fire after onerror, triggering reconnect
       };
     } catch (err) {

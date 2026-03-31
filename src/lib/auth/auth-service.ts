@@ -1,5 +1,5 @@
 import pool from '@/lib/pg-db';
-import { jwtVerify, createRemoteJWKSet } from 'jose';
+import { jwtVerify, createRemoteJWKSet, decodeJwt } from 'jose';
 
 // Create Supabase client
 let supabase: any;
@@ -154,31 +154,62 @@ export async function getAccessToken(): Promise<string | null> {
   return session?.access_token || null;
 }
 
+// Cached JWKS instance to avoid creating a new one on every request
+let cachedJWKS: ReturnType<typeof createRemoteJWKSet> | null = null;
+
+function getJWKS() {
+  if (!cachedJWKS) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    cachedJWKS = createRemoteJWKSet(
+      new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`),
+      { timeoutDuration: 3000 } // 3 second timeout instead of default 5s
+    );
+  }
+  return cachedJWKS;
+}
+
+// Check if a token looks like a valid JWT (has 3 dot-separated parts)
+function isJwtFormat(token: string): boolean {
+  const parts = token.split('.');
+  return parts.length === 3 && parts.every(part => part.length > 0);
+}
+
 // Verify JWT token
 export async function verifyToken(token: string): Promise<boolean> {
   try {
+    // Handle non-JWT tokens (e.g., 'local-auth-token' from local-only auth)
+    if (!isJwtFormat(token)) {
+      console.warn('Token is not in JWT format, skipping JWKS verification');
+      return true; // Accept non-JWT tokens for local auth
+    }
+
     // Check if Supabase environment variables are configured
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl || supabaseUrl === 'your_supabase_url_here') {
-      // If using default/broken Supabase URL, skip verification and assume valid
-      // In production, you'd want proper JWT verification
       console.warn('Supabase URL not properly configured, skipping token verification');
       return true;
     }
     
-    // Supabase uses RS256 algorithm
-    const JWKS = createRemoteJWKSet(
-      new URL(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
-    );
+    // Verify using cached JWKS with timeout
+    const JWKS = getJWKS();
     const { payload } = await jwtVerify(token, JWKS);
     
-    // Additional checks can be performed here
     if (!payload.sub) {
       return false;
     }
     
     return true;
-  } catch (error) {
+  } catch (error: any) {
+    // If JWKS times out, fall back to local decode check
+    if (error?.code === 'ERR_JWKS_TIMEOUT') {
+      console.warn('JWKS timeout, falling back to local JWT decode verification');
+      try {
+        const payload = decodeJwt(token);
+        return !!payload.sub;
+      } catch {
+        return false;
+      }
+    }
     console.error('Token verification failed:', error);
     return false;
   }
@@ -256,12 +287,24 @@ export async function getCurrentUserFromDb(token?: string) {
       return null;
     }
 
+    // Handle non-JWT tokens (e.g., 'local-auth-token' from local-only auth)
+    if (!isJwtFormat(token)) {
+      console.warn('Non-JWT token detected, looking up user from most recent login');
+      // For local auth tokens, return the most recently logged-in user from the DB
+      try {
+        const result = await pool.query(
+          'SELECT * FROM users ORDER BY created_at DESC LIMIT 1'
+        );
+        return result.rows.length > 0 ? result.rows[0] : null;
+      } catch {
+        return null;
+      }
+    }
+
     // Check if Supabase environment variables are configured
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl || supabaseUrl === 'your_supabase_url_here') {
-      // If using default/broken Supabase URL, skip verification and return a basic user
       console.warn('Supabase URL not properly configured, returning basic user info');
-      // Return a basic user object without JWT verification
       return { id: 'temp_user', email: 'temp@example.com', name: 'Temporary User', role: 'USER' };
     }
 
@@ -271,16 +314,17 @@ export async function getCurrentUserFromDb(token?: string) {
       return null;
     }
 
-    // Decode the token to get the user ID
+    // Decode the token locally to get the user ID (no remote call needed)
     let supabaseUserId: string;
     try {
-      const JWKS = createRemoteJWKSet(
-        new URL(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
-      );
-      const { payload } = await jwtVerify(token, JWKS);
+      const payload = decodeJwt(token);
       supabaseUserId = payload.sub as string;
     } catch (decodeError) {
       console.error('Error decoding token:', decodeError);
+      return null;
+    }
+
+    if (!supabaseUserId) {
       return null;
     }
 

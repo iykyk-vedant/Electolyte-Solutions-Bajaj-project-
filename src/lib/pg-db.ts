@@ -752,13 +752,16 @@ export async function saveConsolidatedDataEntry(
     // BEGIN TRANSACTION — atomically assign next SR No
     await client.query('BEGIN');
 
-    // Lock and get max SR No for the current calendar month
+    // Acquire an advisory lock to serialize SR No assignment across concurrent transactions.
+    // Lock ID 1 is reserved for SR No sequencing. Released automatically on COMMIT/ROLLBACK.
+    await client.query('SELECT pg_advisory_xact_lock(1)');
+
+    // Now safe to read the max SR No without FOR UPDATE
     const seqResult = await client.query(`
       SELECT COALESCE(MAX(CAST(sr_no AS INTEGER)), 0) AS max_sr_no
       FROM consolidated_data
       WHERE sr_no ~ '^[0-9]+$'
         AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_TIMESTAMP)
-      FOR UPDATE
     `);
 
     const maxSrNo = seqResult.rows[0]?.max_sr_no ?? 0;
