@@ -704,20 +704,41 @@ export async function addSampleBomData() {
   }
 }
 
-// Save consolidated data entry with session-scoped DC Number and Partcode
-export async function saveConsolidatedDataEntry(entry: any, sessionDcNumber?: string, sessionPartcode?: string): Promise<boolean> {
+// Helper: generate PCB number on the server side (mirrors pcb-utils.ts logic)
+function generatePcbNumberServer(partCode: string, srNo: string): string {
+  if (!partCode) return '';
+  const cleanPartCode = partCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const partCodeSegment = cleanPartCode.substring(0, 7).padEnd(7, '0');
+  const dateObj = new Date();
+  const monthCodes = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+  const monthCode = monthCodes[dateObj.getMonth()] ?? 'A';
+  const yearStr = String(dateObj.getFullYear()).slice(-2);
+  const srNum = parseInt(srNo, 10);
+  const identifier = isNaN(srNum) ? '0001' : String(srNum).padStart(4, '0');
+  return `ES${partCodeSegment}${monthCode}${yearStr}${identifier}R`;
+}
+
+// Save consolidated data entry with atomic server-side SR No assignment.
+// Uses a transaction to prevent duplicate SR numbers across concurrent saves.
+// Returns { success, srNo } where srNo is the actual assigned serial number.
+export async function saveConsolidatedDataEntry(
+  entry: any,
+  sessionDcNumber?: string,
+  sessionPartcode?: string
+): Promise<{ success: boolean; srNo?: string }> {
+  const client = await pool.connect();
   try {
-    console.log('=== saveConsolidatedDataEntry CALLED ===');
+    console.log('=== saveConsolidatedDataEntry CALLED (atomic) ===');
     console.log('Input entry:', entry);
     console.log('Session data - DC Number:', sessionDcNumber, 'Partcode:', sessionPartcode);
 
-    // Validate required fields
-    const requiredFields = ['srNo', 'dcNo', 'complaintNo'];
+    // Validate required fields (srNo no longer required from client)
+    const requiredFields = ['dcNo', 'complaintNo'];
     const missingFields = requiredFields.filter(field => !entry[field]);
 
     if (missingFields.length > 0) {
       console.log('MISSING REQUIRED FIELDS:', missingFields);
-      return false;
+      return { success: false };
     }
 
     console.log('All required fields present');
@@ -728,19 +749,37 @@ export async function saveConsolidatedDataEntry(entry: any, sessionDcNumber?: st
     const repairDateValue = convertToPostgresDate(entry.repairDate);
     const dispatchDateValue = convertToPostgresDate(entry.dispatchDate);
 
-    console.log('Converted dates - DC:', dcDateValue, 'Purchase:', dateOfPurchaseValue, 'Repair:', repairDateValue, 'Dispatch:', dispatchDateValue);
+    // BEGIN TRANSACTION — atomically assign next SR No
+    await client.query('BEGIN');
 
-    console.log('Executing database insert...');
-    const result = await pool.query(`
+    // Lock and get max SR No for the current calendar month
+    const seqResult = await client.query(`
+      SELECT COALESCE(MAX(CAST(sr_no AS INTEGER)), 0) AS max_sr_no
+      FROM consolidated_data
+      WHERE sr_no ~ '^[0-9]+$'
+        AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_TIMESTAMP)
+      FOR UPDATE
+    `);
+
+    const maxSrNo = seqResult.rows[0]?.max_sr_no ?? 0;
+    const assignedSrNo = String((maxSrNo ?? 0) + 1).padStart(4, '0');
+    console.log(`Atomic SR No assignment: MAX=${maxSrNo}, assigned=${assignedSrNo}`);
+
+    // Regenerate PCB Sr No using the server-assigned SR No
+    const partCode = sessionPartcode || entry.partCode || '';
+    const pcbSrNo = partCode ? generatePcbNumberServer(partCode, assignedSrNo) : (entry.pcbSrNo || '');
+
+    console.log('Executing database insert with assignedSrNo:', assignedSrNo, 'pcbSrNo:', pcbSrNo);
+    const result = await client.query(`
       INSERT INTO consolidated_data 
       (sr_no, dc_no, dc_date, branch, bccd_name, product_description, product_sr_no, 
        date_of_purchase, complaint_no, part_code, defect, visiting_tech_name, mfg_month_year,
        repair_date, testing, failure, status, pcb_sr_no, analysis, 
        component_change, engg_name, tag_entry_by, consumption_entry_by, dispatch_entry_by, dispatch_date)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
-      RETURNING id
+      RETURNING id, sr_no
     `, [
-      entry.srNo,
+      assignedSrNo,
       sessionDcNumber || entry.dcNo,
       dcDateValue,
       entry.branch,
@@ -749,7 +788,7 @@ export async function saveConsolidatedDataEntry(entry: any, sessionDcNumber?: st
       entry.productSrNo,
       dateOfPurchaseValue,
       entry.complaintNo,
-      sessionPartcode || entry.partCode,
+      partCode,
       entry.defect,
       entry.visitingTechName,
       entry.mfgMonthYear,
@@ -757,7 +796,7 @@ export async function saveConsolidatedDataEntry(entry: any, sessionDcNumber?: st
       entry.testing,
       entry.failure,
       entry.status,
-      entry.pcbSrNo,
+      pcbSrNo,
       entry.analysis,
       entry.componentChange,
       entry.enggName,
@@ -767,17 +806,20 @@ export async function saveConsolidatedDataEntry(entry: any, sessionDcNumber?: st
       dispatchDateValue
     ]);
 
+    await client.query('COMMIT');
+
     console.log('Database insert result:', result);
-    console.log('Inserted record ID:', result.rows[0]?.id);
+    console.log('Inserted record ID:', result.rows[0]?.id, 'SR No:', result.rows[0]?.sr_no);
 
     if (result.rows.length > 0) {
-      console.log('SUCCESS: Record inserted with ID:', result.rows[0].id);
-      return true;
+      console.log('SUCCESS: Record inserted with ID:', result.rows[0].id, 'SR No:', assignedSrNo);
+      return { success: true, srNo: assignedSrNo };
     } else {
       console.log('WARNING: No rows returned from insert');
-      return false;
+      return { success: false };
     }
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('=== DATABASE SAVE ERROR ===');
     console.error('Error details:', error);
 
@@ -787,7 +829,9 @@ export async function saveConsolidatedDataEntry(entry: any, sessionDcNumber?: st
       console.error('Error stack:', error.stack);
     }
 
-    return false;
+    return { success: false };
+  } finally {
+    client.release();
   }
 }
 

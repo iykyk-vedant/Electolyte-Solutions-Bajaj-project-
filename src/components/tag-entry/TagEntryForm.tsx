@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { TagEntry } from '@/lib/tag-entry/types';
 import { useLockStore } from '@/store/lockStore';
 import { LockButton } from './LockButton';
@@ -10,6 +10,7 @@ import { generatePcbNumber, getMonthCode } from '@/lib/pcb-utils';
 import { tagEntryEventEmitter, TAG_ENTRY_EVENTS } from '@/lib/event-emitter';
 import { EngineerName } from '@/components/ui/engineer-name-db';
 import { useAuth, useSessionData } from '@/contexts/AuthContext';
+import { useRealtimeSrNo } from '@/hooks/useRealtimeSrNo';
 
 // Dialog components for DC creation modal
 import {
@@ -45,11 +46,13 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
 
   const { isDcLocked } = useLockStore();
   const { user } = useAuth();
+  const { nextSrNo: wsSrNo, isConnected: wsConnected } = useRealtimeSrNo('0001');
   const [savedEntries, setSavedEntries] = useState<TagEntry[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showSavedList, setShowSavedList] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [userSelectedPartCode, setUserSelectedPartCode] = useState(false);
+  const isEditingExistingRef = useRef(false); // Track if user loaded an existing entry
 
   // State for DC creation modal
   const [isDcModalOpen, setIsDcModalOpen] = useState(false);
@@ -245,22 +248,19 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     }
   }, [formData.partCode, formData.srNo, formData.mfgMonthYear]);
 
-  // Fetch next SR No on mount: MAX(sr_no) for current calendar month + 1.
-  // Automatically resets to 0001 at the start of each new month.
+  // Sync SR No from WebSocket in real-time (replaces the old one-time fetch).
+  // Only updates if the user is NOT editing an existing entry.
   useEffect(() => {
-    const fetchNextSrNo = async () => {
-      try {
-        const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
-        const seqResult = await getNextGlobalPcbSequenceAction('');
-        if (seqResult.success && seqResult.nextSeq) {
-          setFormData(prev => ({ ...prev, srNo: seqResult.nextSeq as string }));
+    if (wsSrNo && !isEditingExistingRef.current) {
+      console.log(`[WS Sync] Updating SR No from WebSocket: ${wsSrNo}`);
+      setFormData(prev => {
+        if (prev.srNo !== wsSrNo) {
+          return { ...prev, srNo: wsSrNo };
         }
-      } catch (e) {
-        console.error('Error fetching next SR No:', e);
-      }
-    };
-    fetchNextSrNo();
-  }, []); // Run ONCE on mount
+        return prev;
+      });
+    }
+  }, [wsSrNo]);
 
 
   // Sync with lock store when locked values change
@@ -425,7 +425,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     console.log('Using direct save approach...');
 
     const entryToSave = {
-      srNo: formData.srNo || '001',
+      srNo: formData.srNo || '001', // Server will override with atomic assignment
       dcNo: formData.dcNo || '',
       branch: formData.branch || 'Mumbai',
       bccdName: formData.bccdName || '',
@@ -453,24 +453,17 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
       console.log('Save result:', result);
 
       if (result.success) {
-        console.log('SAVE SUCCESSFUL');
-        alert('Entry saved successfully!');
+        const savedSrNo = result.savedSrNo || formData.srNo;
+        console.log('SAVE SUCCESSFUL with SR No:', savedSrNo);
+        alert(`Entry saved successfully! (SR No: ${savedSrNo})`);
 
-        // Fetch next SR No after save (MAX of current month + 1)
-        let nextSrNo = undefined;
+        // WebSocket will automatically push the next SR No to all clients.
+        // No need to manually fetch — just clear the form.
         let preservedMonth = formData.mfgMonthYear;
+        isEditingExistingRef.current = false;
 
-        try {
-          const { getNextGlobalPcbSequenceAction } = await import('@/app/actions/consumption-actions');
-          const seqResult = await getNextGlobalPcbSequenceAction('');
-          if (seqResult.success && seqResult.nextSeq) {
-            nextSrNo = seqResult.nextSeq;
-          }
-        } catch (err) {
-          console.error('Error fetching next SR No after save:', err);
-        }
-
-        handleClear(nextSrNo, preservedMonth);
+        // Pass undefined for nextSrNo — WebSocket will update it shortly
+        handleClear(undefined, preservedMonth);
         setShowSavedList(true);
       } else {
         console.log('SAVE FAILED:', result.error);
@@ -542,9 +535,10 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
   };
 
   const handleClear = (nextSrNo?: string, preservedMonth?: string) => {
+    isEditingExistingRef.current = false; // Allow WebSocket updates again
     setFormData({
       id: '',
-      srNo: nextSrNo || formData.srNo || '0001',
+      srNo: nextSrNo || wsSrNo || formData.srNo || '0001',
       dcNo: sessionDcNumber || '', // Preserve session DC Number
       branch: 'Mumbai',
       bccdName: 'BCCD-001',
@@ -640,6 +634,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
     // If only one result, load it directly
     if (results.length === 1) {
       const entry = results[0];
+      isEditingExistingRef.current = true; // Prevent WebSocket from overwriting
       setFormData({
         id: entry.id || '',
         srNo: entry.srNo,
@@ -667,6 +662,7 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
   };
 
   const loadEntry = (entry: TagEntry) => {
+    isEditingExistingRef.current = true; // Prevent WebSocket from overwriting loaded SR No
     // Convert mfgMonthYear format if needed (from YYYY-MM to MM/YYYY)
     let mfgMonthYear = entry.mfgMonthYear || '';
     if (mfgMonthYear && mfgMonthYear.length === 7 && mfgMonthYear[4] === '-') {

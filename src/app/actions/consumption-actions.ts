@@ -117,10 +117,21 @@ export async function saveConsolidatedData(data: any, sessionDcNumber?: string, 
 
     console.log('Database save result:', result);
 
-    if (result === true) {
+    if (result.success) {
+      // Broadcast SR No update to all connected WebSocket clients
+      try {
+        const wsPort = process.env.WS_PORT || '3002';
+        await fetch(`http://localhost:${wsPort}/broadcast`, { method: 'POST' });
+        console.log('WebSocket broadcast triggered successfully');
+      } catch (broadcastErr) {
+        // Non-critical — log but don't fail the save
+        console.warn('WebSocket broadcast failed (non-critical):', broadcastErr);
+      }
+
       return {
         success: true,
-        data: true
+        data: true,
+        savedSrNo: result.srNo, // Return the actual server-assigned SR No
       };
     } else {
       return {
