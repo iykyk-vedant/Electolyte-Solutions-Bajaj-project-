@@ -81,3 +81,57 @@ export async function getAdminDcNumbersAction() {
     };
   }
 }
+
+// Server action to get today's entry counts for a specific user (for user dashboard footer)
+export async function getUserTodayEntryCountsAction(userName: string) {
+  try {
+    const { getUserEntryCountsToday } = await import('@/lib/pg-db');
+    const counts = await getUserEntryCountsToday(userName);
+    return {
+      success: true,
+      data: counts,
+    };
+  } catch (error) {
+    console.error('Error fetching user today entry counts:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unknown error occurred',
+    };
+  }
+}
+
+// Server action to get entry counts grouped by part code (for admin Part Code tab)
+export async function getAdminPartCodeAnalyticsAction(date?: string) {
+  try {
+    const { getEntryCountsByPartCode } = await import('@/lib/pg-db');
+    const result = await getEntryCountsByPartCode(date);
+    return {
+      success: true,
+      data: result,
+    };
+  } catch (error) {
+    console.error('Error fetching part code analytics:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unknown error occurred',
+    };
+  }
+}
+
+// Server action to get entry counts grouped by DC number (for admin DC Number tab)
+export async function getAdminDcNumberAnalyticsAction(date?: string) {
+  try {
+    const { getEntryCountsByDcNumber } = await import('@/lib/pg-db');
+    const result = await getEntryCountsByDcNumber(date);
+    return {
+      success: true,
+      data: result,
+    };
+  } catch (error) {
+    console.error('Error fetching DC number analytics:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unknown error occurred',
+    };
+  }
+}

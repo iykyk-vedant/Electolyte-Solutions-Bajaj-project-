@@ -7,6 +7,7 @@ import { extractDataFromImage } from '@/app/actions';
 import type { ExtractDataOutput } from '@/ai/schemas/form-extraction-schemas';
 import { ImageUploader } from '@/components/image-uploader';
 import { useAuth } from '@/contexts/AuthContext';
+import { getUserTodayEntryCountsAction } from '@/app/actions/admin-actions';
 
 import { TagEntryForm } from '@/components/tag-entry/TagEntryForm';
 import { SettingsTab } from '@/components/tag-entry/SettingsTab';
@@ -118,6 +119,10 @@ export default function Home() {
   const [tagEntrySubTab, setTagEntrySubTab] = useState<"form" | "settings">("form");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
+
+  // User entry counts for today (footer)
+  const [userTagCount, setUserTagCount] = useState(0);
+  const [userConsumptionCount, setUserConsumptionCount] = useState(0);
   
   // Check authentication on initial load
   useEffect(() => {
@@ -132,6 +137,28 @@ export default function Home() {
     }
   }, [authLoading, user, router]);
   
+  // Fetch user's today entry counts
+  const fetchUserEntryCounts = useCallback(async () => {
+    if (user?.name) {
+      try {
+        const result = await getUserTodayEntryCountsAction(user.name);
+        if (result.success && result.data) {
+          setUserTagCount(result.data.tagCount);
+          setUserConsumptionCount(result.data.consumptionCount);
+        }
+      } catch (error) {
+        console.error('Error fetching user entry counts:', error);
+      }
+    }
+  }, [user?.name]);
+
+  useEffect(() => {
+    fetchUserEntryCounts();
+    // Refresh counts every 30 seconds
+    const interval = setInterval(fetchUserEntryCounts, 30000);
+    return () => clearInterval(interval);
+  }, [fetchUserEntryCounts]);
+
   // Load DC numbers and mappings from database only after mount
   useEffect(() => {
     const loadFromDatabase = async () => {
@@ -896,6 +923,28 @@ export default function Home() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* User Today Entry Counts Footer */}
+      <div className="sticky bottom-0 z-20 bg-card/95 backdrop-blur-lg border-t border-border shadow-lg">
+        <div className="container mx-auto px-4 py-2 flex items-center justify-center gap-8">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+            <span className="text-sm font-medium text-muted-foreground">Today's Entries:</span>
+          </div>
+          <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-950/30 px-3 py-1 rounded-lg border border-blue-200 dark:border-blue-800">
+            <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+            </svg>
+            <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">Tag: {userTagCount}</span>
+          </div>
+          <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/30 px-3 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
+            <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">Consumption: {userConsumptionCount}</span>
+          </div>
+        </div>
+      </div>
 
       {/* Duplicate Entry Warning Dialog */}
       <AlertDialog open={isDuplicateWarningOpen} onOpenChange={setIsDuplicateWarningOpen}>

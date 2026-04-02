@@ -1406,3 +1406,176 @@ export async function getNextGlobalPcbSequence(_mfgMonthYear?: string): Promise<
     return '0001'; // Fallback
   }
 }
+
+// Get today's entry counts for a specific user (for user dashboard footer)
+export async function getUserEntryCountsToday(userName: string): Promise<{ tagCount: number; consumptionCount: number }> {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    const tagResult = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM consolidated_data
+       WHERE tag_entry_by = $1
+         AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $2::date`,
+      [userName, today]
+    );
+
+    const consumptionResult = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM consolidated_data
+       WHERE consumption_entry_by = $1
+         AND (updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $2::date`,
+      [userName, today]
+    );
+
+    return {
+      tagCount: tagResult.rows[0]?.count ?? 0,
+      consumptionCount: consumptionResult.rows[0]?.count ?? 0,
+    };
+  } catch (error) {
+    console.error('Error fetching user entry counts today:', error);
+    return { tagCount: 0, consumptionCount: 0 };
+  }
+}
+
+// Get entry counts grouped by part_code (for admin Part Code analytics tab)
+// If date is provided, filter by that date. If date is 'overall', return all-time counts.
+export async function getEntryCountsByPartCode(date?: string): Promise<{
+  rows: { part_code: string; tag_count: number; consumption_count: number }[];
+  totalTag: number;
+  totalConsumption: number;
+}> {
+  try {
+    let dateFilter = '';
+    const params: string[] = [];
+
+    if (date && date !== 'overall') {
+      dateFilter = `AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date`;
+      params.push(date);
+    }
+
+    // Tag entries by part_code
+    const tagQuery = `
+      SELECT part_code, COUNT(*)::int AS count
+      FROM consolidated_data
+      WHERE tag_entry_by IS NOT NULL AND tag_entry_by != ''
+        AND part_code IS NOT NULL AND part_code != ''
+        ${dateFilter}
+      GROUP BY part_code
+      ORDER BY part_code ASC`;
+
+    // Consumption entries by part_code (use updated_at for consumption date filtering)
+    const consumptionDateFilter = date && date !== 'overall'
+      ? `AND (updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date`
+      : '';
+
+    const consumptionQuery = `
+      SELECT part_code, COUNT(*)::int AS count
+      FROM consolidated_data
+      WHERE consumption_entry_by IS NOT NULL AND consumption_entry_by != ''
+        AND part_code IS NOT NULL AND part_code != ''
+        ${consumptionDateFilter}
+      GROUP BY part_code
+      ORDER BY part_code ASC`;
+
+    const [tagResult, consumptionResult] = await Promise.all([
+      pool.query(tagQuery, params),
+      pool.query(consumptionQuery, params),
+    ]);
+
+    // Merge results
+    const partCodeMap = new Map<string, { tag_count: number; consumption_count: number }>();
+
+    for (const row of tagResult.rows) {
+      partCodeMap.set(row.part_code, { tag_count: row.count, consumption_count: 0 });
+    }
+    for (const row of consumptionResult.rows) {
+      const existing = partCodeMap.get(row.part_code) || { tag_count: 0, consumption_count: 0 };
+      existing.consumption_count = row.count;
+      partCodeMap.set(row.part_code, existing);
+    }
+
+    const rows = Array.from(partCodeMap.entries())
+      .map(([part_code, counts]) => ({ part_code, ...counts }))
+      .sort((a, b) => a.part_code.localeCompare(b.part_code));
+
+    const totalTag = rows.reduce((sum, r) => sum + r.tag_count, 0);
+    const totalConsumption = rows.reduce((sum, r) => sum + r.consumption_count, 0);
+
+    return { rows, totalTag, totalConsumption };
+  } catch (error) {
+    console.error('Error fetching entry counts by part code:', error);
+    return { rows: [], totalTag: 0, totalConsumption: 0 };
+  }
+}
+
+// Get entry counts grouped by dc_no (for admin DC Number analytics tab)
+// If date is provided, filter by that date. If date is 'overall', return all-time counts.
+export async function getEntryCountsByDcNumber(date?: string): Promise<{
+  rows: { dc_no: string; tag_count: number; consumption_count: number }[];
+  totalTag: number;
+  totalConsumption: number;
+}> {
+  try {
+    let dateFilter = '';
+    const params: string[] = [];
+
+    if (date && date !== 'overall') {
+      dateFilter = `AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date`;
+      params.push(date);
+    }
+
+    // Tag entries by dc_no
+    const tagQuery = `
+      SELECT dc_no, COUNT(*)::int AS count
+      FROM consolidated_data
+      WHERE tag_entry_by IS NOT NULL AND tag_entry_by != ''
+        AND dc_no IS NOT NULL AND dc_no != ''
+        ${dateFilter}
+      GROUP BY dc_no
+      ORDER BY dc_no ASC`;
+
+    // Consumption entries by dc_no
+    const consumptionDateFilter = date && date !== 'overall'
+      ? `AND (updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date`
+      : '';
+
+    const consumptionQuery = `
+      SELECT dc_no, COUNT(*)::int AS count
+      FROM consolidated_data
+      WHERE consumption_entry_by IS NOT NULL AND consumption_entry_by != ''
+        AND dc_no IS NOT NULL AND dc_no != ''
+        ${consumptionDateFilter}
+      GROUP BY dc_no
+      ORDER BY dc_no ASC`;
+
+    const [tagResult, consumptionResult] = await Promise.all([
+      pool.query(tagQuery, params),
+      pool.query(consumptionQuery, params),
+    ]);
+
+    // Merge results
+    const dcNoMap = new Map<string, { tag_count: number; consumption_count: number }>();
+
+    for (const row of tagResult.rows) {
+      dcNoMap.set(row.dc_no, { tag_count: row.count, consumption_count: 0 });
+    }
+    for (const row of consumptionResult.rows) {
+      const existing = dcNoMap.get(row.dc_no) || { tag_count: 0, consumption_count: 0 };
+      existing.consumption_count = row.count;
+      dcNoMap.set(row.dc_no, existing);
+    }
+
+    const rows = Array.from(dcNoMap.entries())
+      .map(([dc_no, counts]) => ({ dc_no, ...counts }))
+      .sort((a, b) => a.dc_no.localeCompare(b.dc_no));
+
+    const totalTag = rows.reduce((sum, r) => sum + r.tag_count, 0);
+    const totalConsumption = rows.reduce((sum, r) => sum + r.consumption_count, 0);
+
+    return { rows, totalTag, totalConsumption };
+  } catch (error) {
+    console.error('Error fetching entry counts by DC number:', error);
+    return { rows: [], totalTag: 0, totalConsumption: 0 };
+  }
+}
