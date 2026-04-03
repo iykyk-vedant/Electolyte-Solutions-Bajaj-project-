@@ -26,7 +26,8 @@ export function useRealtimeSrNo(initialSrNo: string = '0001'): UseRealtimeSrNoRe
     // This ensures it works on LAN — connects to the same host the page was loaded from
     const wsHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3002';
-    const wsUrl = `ws://${wsHost}:${wsPort}`;
+    const wsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl = `${wsProtocol}://${wsHost}:${wsPort}`;
 
     console.log(`[SR No WS] Connecting to ${wsUrl}...`);
 

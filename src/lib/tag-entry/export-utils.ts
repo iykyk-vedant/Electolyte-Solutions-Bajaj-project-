@@ -3,48 +3,20 @@ import { TagEntry } from './types';
 /**
  * Utility function to export tag entries to Excel format
  * 
- * This function fetches all tag entries from localStorage and sends them
- * to the API endpoint to generate an Excel file matching the template format.
+ * Sends only the dcNo filter to the API. The server queries the database
+ * directly, avoiding request body size limits entirely.
  * 
  * @returns Promise that resolves when the file download is triggered
  */
 export async function exportTagEntriesToExcel(dcNo?: string): Promise<void> {
   try {
-    let entries;
-    
-    if (dcNo) {
-      // If DC number is provided, fetch only entries for that DC number
-      const { getConsolidatedDataEntriesByDcNoAction } = await import('@/app/actions/consumption-actions');
-      const result = await getConsolidatedDataEntriesByDcNoAction(dcNo);
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch entries from database');
-      }
-      
-      entries = result.data;
-    } else {
-      // Get ALL tag entries from the database (no pagination limit)
-      const { getAllConsolidatedDataEntriesAction } = await import('@/app/actions/consumption-actions');
-      const result = await getAllConsolidatedDataEntriesAction();
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch entries from database');
-      }
-
-      entries = result.data;
-    }
-
-    if (!entries || entries.length === 0) {
-      throw new Error('No entries to export. Please save some entries first.');
-    }
-
-    // Call API endpoint with POST request
+    // Only send the dcNo filter — the server queries the DB directly
     const response = await fetch('/api/export-excel', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ entries, dcNo }),
+      body: JSON.stringify({ dcNo: dcNo || null }),
     });
 
     if (!response.ok) {
@@ -77,4 +49,3 @@ export async function exportTagEntriesToExcel(dcNo?: string): Promise<void> {
     throw error;
   }
 }
-

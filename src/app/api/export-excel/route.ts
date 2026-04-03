@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
+import { getAllConsolidatedDataEntries, getConsolidatedDataEntriesByDcNo } from '@/lib/pg-db';
 
 /**
  * API Route: /api/export-excel
  *
  * Exports consolidated_data entries to Excel.
+ * Queries the database directly on the server side to avoid body size limits.
  * The Excel columns match the DB schema exactly — no renaming, no mapping.
  * Entries are sorted by part_code ASC, then sr_no ASC (numeric).
  */
@@ -44,7 +46,15 @@ const DB_COLUMNS = [
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { entries, dcNo } = body;
+    const { dcNo } = body;
+
+    // Query database directly on the server — no need to receive entries from the client
+    let entries: any[];
+    if (dcNo) {
+      entries = await getConsolidatedDataEntriesByDcNo(dcNo);
+    } else {
+      entries = await getAllConsolidatedDataEntries();
+    }
 
     if (!entries || entries.length === 0) {
       return NextResponse.json({ error: 'No entries to export' }, { status: 400 });
