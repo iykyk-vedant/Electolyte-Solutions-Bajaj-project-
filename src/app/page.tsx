@@ -8,6 +8,7 @@ import type { ExtractDataOutput } from '@/ai/schemas/form-extraction-schemas';
 import { ImageUploader } from '@/components/image-uploader';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserTodayEntryCountsAction } from '@/app/actions/admin-actions';
+import { tagEntryEventEmitter, TAG_ENTRY_EVENTS } from '@/lib/event-emitter';
 
 import { TagEntryForm } from '@/components/tag-entry/TagEntryForm';
 import { SettingsTab } from '@/components/tag-entry/SettingsTab';
@@ -139,9 +140,13 @@ export default function Home() {
   
   // Fetch user's today entry counts
   const fetchUserEntryCounts = useCallback(async () => {
-    if (user?.name) {
+    // Use the same identifier that tag/consumption entries are saved with
+    const userName = user?.name || user?.email;
+    if (userName) {
       try {
-        const result = await getUserTodayEntryCountsAction(user.name);
+        console.log('Fetching entry counts for user:', userName);
+        const result = await getUserTodayEntryCountsAction(userName);
+        console.log('Entry counts result:', result);
         if (result.success && result.data) {
           setUserTagCount(result.data.tagCount);
           setUserConsumptionCount(result.data.consumptionCount);
@@ -150,13 +155,26 @@ export default function Home() {
         console.error('Error fetching user entry counts:', error);
       }
     }
-  }, [user?.name]);
+  }, [user?.name, user?.email]);
 
   useEffect(() => {
     fetchUserEntryCounts();
     // Refresh counts every 30 seconds
     const interval = setInterval(fetchUserEntryCounts, 30000);
-    return () => clearInterval(interval);
+
+    // Also refresh immediately when any entry is saved/updated/deleted
+    const handleEntrySaved = () => {
+      console.log('Entry saved event received, refreshing counters...');
+      fetchUserEntryCounts();
+    };
+    tagEntryEventEmitter.on(TAG_ENTRY_EVENTS.ENTRY_SAVED, handleEntrySaved);
+    tagEntryEventEmitter.on(TAG_ENTRY_EVENTS.ENTRY_DELETED, handleEntrySaved);
+
+    return () => {
+      clearInterval(interval);
+      tagEntryEventEmitter.off(TAG_ENTRY_EVENTS.ENTRY_SAVED, handleEntrySaved);
+      tagEntryEventEmitter.off(TAG_ENTRY_EVENTS.ENTRY_DELETED, handleEntrySaved);
+    };
   }, [fetchUserEntryCounts]);
 
   // Load DC numbers and mappings from database only after mount

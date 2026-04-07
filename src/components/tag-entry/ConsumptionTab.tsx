@@ -8,6 +8,7 @@ import { validateBomComponents, saveConsolidatedData, searchConsolidatedDataEntr
 import { getPcbNumberForDc } from '@/lib/pcb-utils';
 import { EngineerName } from '@/components/ui/engineer-name-db';
 import { useAuth } from '@/contexts/AuthContext';
+import { tagEntryEventEmitter, TAG_ENTRY_EVENTS } from '@/lib/event-emitter';
 
 interface ConsumptionTabProps {
   dcNumbers?: string[];
@@ -560,6 +561,9 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
       // Refresh the data to show updated consumption data - reload current page
       await loadPageData(currentPage);
 
+      // Notify listeners (e.g., counter footer) that an entry was saved
+      tagEntryEventEmitter.emit(TAG_ENTRY_EVENTS.ENTRY_SAVED);
+
       alert('Data consumed successfully! Consumption data saved to database.');
 
       // Auto-reset for next entry:
@@ -917,13 +921,13 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Mfg Month/Year (MM/YYYY)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mfg Month/Year</label>
               <input
                 type="text"
                 value={mfgMonthYear}
                 onChange={(e) => setMfgMonthYear(e.target.value)}
                 className={`w-full p-1 text-sm border border-gray-300 rounded h-8 ${isPcbFound ? 'bg-gray-100' : ''}`}
-                placeholder="MM/YYYY"
+                placeholder="A26 or MM/YYYY"
                 disabled={isPcbFound}
               />
             </div>

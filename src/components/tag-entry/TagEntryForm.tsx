@@ -457,6 +457,9 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         console.log('SAVE SUCCESSFUL with SR No:', savedSrNo);
         alert(`Entry saved successfully! (SR No: ${savedSrNo})`);
 
+        // Notify listeners (e.g., counter footer) that an entry was saved
+        tagEntryEventEmitter.emit(TAG_ENTRY_EVENTS.ENTRY_SAVED);
+
         // WebSocket will automatically push the next SR No to all clients.
         // No need to manually fetch — just clear the form.
         let preservedMonth = formData.mfgMonthYear;

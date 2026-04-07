@@ -1410,7 +1410,13 @@ export async function getNextGlobalPcbSequence(_mfgMonthYear?: string): Promise<
 // Get today's entry counts for a specific user (for user dashboard footer)
 export async function getUserEntryCountsToday(userName: string): Promise<{ tagCount: number; consumptionCount: number }> {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    // Compute today's date in IST to match the SQL query's AT TIME ZONE 'Asia/Kolkata' conversion
+    const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const today = nowIST.getFullYear() + '-' +
+      String(nowIST.getMonth() + 1).padStart(2, '0') + '-' +
+      String(nowIST.getDate()).padStart(2, '0');
+    
+    console.log('getUserEntryCountsToday - userName:', userName, 'today (IST):', today);
 
     const tagResult = await pool.query(
       `SELECT COUNT(*)::int AS count
