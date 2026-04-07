@@ -1335,25 +1335,25 @@ export async function getAdminEntryCountsByDate(date: string): Promise<{
   consumptionEntries: { user_name: string; count: number }[];
 }> {
   try {
-    // Tag entries: count rows where tag_entry_by is set and created_at matches the date in IST
+    // Tag entries: count rows where tag_entry_by is set and created_at matches the date
     const tagResult = await pool.query(
       `SELECT tag_entry_by AS user_name, COUNT(*)::int AS count
        FROM consolidated_data
        WHERE tag_entry_by IS NOT NULL
          AND tag_entry_by != ''
-         AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date
+         AND created_at::date = $1::date
        GROUP BY tag_entry_by
        ORDER BY tag_entry_by ASC`,
       [date]
     );
 
-    // Consumption entries: count rows where consumption_entry_by is set and updated_at matches the date in IST
+    // Consumption entries: count rows where consumption_entry_by is set and updated_at matches the date
     const consumptionResult = await pool.query(
       `SELECT consumption_entry_by AS user_name, COUNT(*)::int AS count
        FROM consolidated_data
        WHERE consumption_entry_by IS NOT NULL
          AND consumption_entry_by != ''
-         AND (updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date
+         AND updated_at::date = $1::date
        GROUP BY consumption_entry_by
        ORDER BY consumption_entry_by ASC`,
       [date]
@@ -1410,29 +1410,24 @@ export async function getNextGlobalPcbSequence(_mfgMonthYear?: string): Promise<
 // Get today's entry counts for a specific user (for user dashboard footer)
 export async function getUserEntryCountsToday(userName: string): Promise<{ tagCount: number; consumptionCount: number }> {
   try {
-    // Compute today's date in IST to match the SQL query's AT TIME ZONE 'Asia/Kolkata' conversion
-    const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-    const today = nowIST.getFullYear() + '-' +
-      String(nowIST.getMonth() + 1).padStart(2, '0') + '-' +
-      String(nowIST.getDate()).padStart(2, '0');
-    
-    console.log('getUserEntryCountsToday - userName:', userName, 'today (IST):', today);
-
+    // Use CURRENT_DATE from PostgreSQL to avoid any timezone mismatch between Node.js and the DB
     const tagResult = await pool.query(
       `SELECT COUNT(*)::int AS count
        FROM consolidated_data
        WHERE tag_entry_by = $1
-         AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $2::date`,
-      [userName, today]
+         AND created_at::date = CURRENT_DATE`,
+      [userName]
     );
 
     const consumptionResult = await pool.query(
       `SELECT COUNT(*)::int AS count
        FROM consolidated_data
        WHERE consumption_entry_by = $1
-         AND (updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $2::date`,
-      [userName, today]
+         AND updated_at::date = CURRENT_DATE`,
+      [userName]
     );
+
+    console.log('getUserEntryCountsToday - userName:', userName, 'tag:', tagResult.rows[0]?.count, 'consumption:', consumptionResult.rows[0]?.count);
 
     return {
       tagCount: tagResult.rows[0]?.count ?? 0,
@@ -1456,7 +1451,7 @@ export async function getEntryCountsByPartCode(date?: string): Promise<{
     const params: string[] = [];
 
     if (date && date !== 'overall') {
-      dateFilter = `AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date`;
+      dateFilter = `AND created_at::date = $1::date`;
       params.push(date);
     }
 
@@ -1472,7 +1467,7 @@ export async function getEntryCountsByPartCode(date?: string): Promise<{
 
     // Consumption entries by part_code (use updated_at for consumption date filtering)
     const consumptionDateFilter = date && date !== 'overall'
-      ? `AND (updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date`
+      ? `AND updated_at::date = $1::date`
       : '';
 
     const consumptionQuery = `
@@ -1527,7 +1522,7 @@ export async function getEntryCountsByDcNumber(date?: string): Promise<{
     const params: string[] = [];
 
     if (date && date !== 'overall') {
-      dateFilter = `AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date`;
+      dateFilter = `AND created_at::date = $1::date`;
       params.push(date);
     }
 
@@ -1543,7 +1538,7 @@ export async function getEntryCountsByDcNumber(date?: string): Promise<{
 
     // Consumption entries by dc_no
     const consumptionDateFilter = date && date !== 'overall'
-      ? `AND (updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata')::date = $1::date`
+      ? `AND updated_at::date = $1::date`
       : '';
 
     const consumptionQuery = `
