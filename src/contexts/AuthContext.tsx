@@ -20,6 +20,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<any>;
   signUp: (email: string, password: string, name: string) => Promise<any>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   isAuthenticated: () => boolean;
   getSelectedDcNumber: () => string | null;
   getSelectedPartCode: () => string | null;
@@ -189,6 +190,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const resetPassword = async (email: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Failed to send reset email' };
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Network error' };
+    }
+  };
+
   const getSelectedDcNumber = (): string | null => {
     if (typeof window !== 'undefined') {
       const dcNumber = localStorage.getItem('selectedDcNumber');
@@ -217,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn,
     signUp,
     signOut,
+    resetPassword,
     isAuthenticated,
     getSelectedDcNumber,
     getSelectedPartCode,

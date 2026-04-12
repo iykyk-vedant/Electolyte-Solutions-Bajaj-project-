@@ -274,6 +274,78 @@ export async function getUserBySupabaseId(supabaseUserId: string) {
   }
 }
 
+// Reset password - send reset email via Supabase
+export async function resetPasswordForEmail(email: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!supabase) {
+      return { success: false, error: 'Supabase not configured. Password reset via email is not available.' };
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
+    const redirectTo = `${appUrl}/reset-password`;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    });
+
+    if (error) {
+      console.error('Password reset error:', error);
+      // Don't reveal whether the email exists or not
+      return { success: true };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error sending password reset email:', error);
+    // Don't reveal internal errors to the user
+    return { success: true };
+  }
+}
+
+// Update password using recovery token
+export async function updatePassword(newPassword: string, accessToken: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!supabase) {
+      return { success: false, error: 'Supabase not configured. Password update is not available.' };
+    }
+
+    // Create a new Supabase client with the user's access token to update their password
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    
+    const { createClient } = await import('@supabase/supabase-js');
+    
+    // First, verify the access token and get the user
+    const { data: { user }, error: userError } = await supabase.auth.getUser(accessToken);
+    
+    if (userError || !user) {
+      return { success: false, error: 'Invalid or expired reset link. Please request a new one.' };
+    }
+
+    // Use admin client to update the user's password
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+
+    const { error: updateError } = await adminClient.auth.admin.updateUserById(user.id, {
+      password: newPassword,
+    });
+
+    if (updateError) {
+      console.error('Password update error:', updateError);
+      return { success: false, error: 'Failed to update password. Please try again.' };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating password:', error);
+    return { success: false, error: 'An error occurred while updating the password.' };
+  }
+}
+
 // Get current authenticated user from Neon DB
 export async function getCurrentUserFromDb(token?: string) {
   try {

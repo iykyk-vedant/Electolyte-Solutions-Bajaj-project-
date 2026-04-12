@@ -224,7 +224,12 @@ export default function LoginPage() {
           <div className="flex items-center justify-between">
             <div className="text-sm">
               <Link href="/signup" className="font-medium text-indigo-600 hover:text-indigo-500">
-                Don't have an account? Sign up
+                Don&apos;t have an account? Sign up
+              </Link>
+            </div>
+            <div className="text-sm">
+              <Link href="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500">
+                Forgot password?
               </Link>
             </div>
           </div>
