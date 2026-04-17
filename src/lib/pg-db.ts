@@ -838,6 +838,96 @@ export async function saveConsolidatedDataEntry(
   }
 }
 
+// Bulk create scrap PCB entries with atomic SR No assignment.
+// Creates N entries in a single transaction with consecutive SR numbers.
+// All text fields are set to "NA", date fields to null, and PCB Sr Nos are auto-generated.
+export async function bulkCreateScrapEntries(
+  dcNo: string,
+  partCode: string,
+  count: number,
+  tagEntryBy: string
+): Promise<{ success: boolean; startSrNo?: string; endSrNo?: string }> {
+  const client = await pool.connect();
+  try {
+    console.log(`=== bulkCreateScrapEntries CALLED: ${count} entries for DC=${dcNo}, Part=${partCode} ===`);
+
+    // BEGIN TRANSACTION
+    await client.query('BEGIN');
+
+    // Acquire advisory lock (same lock ID as saveConsolidatedDataEntry)
+    await client.query('SELECT pg_advisory_xact_lock(1)');
+
+    // Get the current max SR No for the current month
+    const seqResult = await client.query(`
+      SELECT COALESCE(MAX(CAST(sr_no AS INTEGER)), 0) AS max_sr_no
+      FROM consolidated_data
+      WHERE sr_no ~ '^[0-9]+$'
+        AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_TIMESTAMP)
+    `);
+
+    const maxSrNo = seqResult.rows[0]?.max_sr_no ?? 0;
+    const startSrNo = maxSrNo + 1;
+    const endSrNo = maxSrNo + count;
+
+    console.log(`Bulk SR No range: ${startSrNo} to ${endSrNo}`);
+
+    // Build batch INSERT with all entries
+    const valuesList: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    for (let i = 0; i < count; i++) {
+      const currentSrNo = String(startSrNo + i).padStart(4, '0');
+      const pcbSrNo = generatePcbNumberServer(partCode, currentSrNo);
+
+      valuesList.push(
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, $${paramIndex + 12}, $${paramIndex + 13})`
+      );
+      params.push(
+        currentSrNo,       // sr_no
+        dcNo,              // dc_no
+        'NA',              // branch
+        'NA',              // bccd_name
+        'NA',              // product_description
+        `SCRAP-${dcNo}-${currentSrNo}`,  // product_sr_no (must be unique per row)
+        'NA',              // complaint_no
+        partCode,          // part_code
+        'NA',              // defect
+        'NA',              // visiting_tech_name
+        pcbSrNo,           // pcb_sr_no
+        tagEntryBy,        // tag_entry_by
+        'NA',              // engg_name
+        'NA'               // mfg_month_year
+      );
+      paramIndex += 14;
+    }
+
+    const query = `
+      INSERT INTO consolidated_data 
+      (sr_no, dc_no, branch, bccd_name, product_description, product_sr_no, 
+       complaint_no, part_code, defect, visiting_tech_name, pcb_sr_no, 
+       tag_entry_by, engg_name, mfg_month_year)
+      VALUES ${valuesList.join(', ')}
+    `;
+
+    await client.query(query, params);
+    await client.query('COMMIT');
+
+    const formattedStart = String(startSrNo).padStart(4, '0');
+    const formattedEnd = String(endSrNo).padStart(4, '0');
+
+    console.log(`Bulk insert complete: SR No ${formattedStart} to ${formattedEnd}`);
+    return { success: true, startSrNo: formattedStart, endSrNo: formattedEnd };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('=== BULK CREATE SCRAP ENTRIES ERROR ===');
+    console.error('Error details:', error);
+    return { success: false };
+  } finally {
+    client.release();
+  }
+}
+
 // Get consolidated data entries with pagination
 export async function getConsolidatedDataEntriesPaginated(limit: number, offset: number): Promise<any[]> {
   try {

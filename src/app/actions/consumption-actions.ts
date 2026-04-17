@@ -414,3 +414,41 @@ export async function deleteConsolidatedDataEntryAction(id: string) {
     };
   }
 }
+
+// Server action to bulk create scrap PCB entries
+export async function bulkCreateScrapEntriesAction(dcNo: string, partCode: string, count: number, tagEntryBy: string) {
+  try {
+    console.log(`=== BULK CREATE SCRAP ENTRIES ACTION: ${count} entries ===`);
+
+    const { bulkCreateScrapEntries } = await import('@/lib/pg-db');
+    const result = await bulkCreateScrapEntries(dcNo, partCode, count, tagEntryBy);
+
+    if (result.success) {
+      // Broadcast SR No update to all connected WebSocket clients
+      try {
+        const wsPort = process.env.WS_PORT || '3002';
+        await fetch(`http://localhost:${wsPort}/broadcast`, { method: 'POST' });
+        console.log('WebSocket broadcast triggered after bulk scrap upload');
+      } catch (broadcastErr) {
+        console.warn('WebSocket broadcast failed (non-critical):', broadcastErr);
+      }
+
+      return {
+        success: true,
+        startSrNo: result.startSrNo,
+        endSrNo: result.endSrNo,
+      };
+    } else {
+      return {
+        success: false,
+        error: 'Failed to create scrap entries in database'
+      };
+    }
+  } catch (error) {
+    console.error('Error in bulkCreateScrapEntriesAction:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
+    };
+  }
+}
