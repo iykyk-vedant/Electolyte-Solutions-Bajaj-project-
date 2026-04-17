@@ -11,6 +11,7 @@ import { LockButton } from '@/components/tag-entry/LockButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { tagEntryEventEmitter, TAG_ENTRY_EVENTS } from '@/lib/event-emitter';
 import { bulkCreateScrapEntriesAction } from '@/app/actions/consumption-actions';
+import { spareParts } from '@/lib/spare-parts';
 import { Upload, AlertTriangle, CheckCircle2, Package } from 'lucide-react';
 import {
   AlertDialog,
@@ -114,8 +115,12 @@ export function BulkScrapTab({ dcNumbers = [], dcPartCodes = {} }: BulkScrapTabP
       setProgress(30);
 
       // Call server action for bulk creation
-      console.log('Calling bulkCreateScrapEntriesAction with:', { dcNo: effectiveDcNo, partCode: effectivePartCode, count, tagEntryBy });
-      const result = await bulkCreateScrapEntriesAction(effectiveDcNo, effectivePartCode, count, tagEntryBy);
+      // Auto-lookup product description from spareParts JSON based on part code
+      const sparePartMatch = spareParts.find(sp => sp.code === effectivePartCode);
+      const productDescription = sparePartMatch?.description || 'NA';
+
+      console.log('Calling bulkCreateScrapEntriesAction with:', { dcNo: effectiveDcNo, partCode: effectivePartCode, count, tagEntryBy, productDescription });
+      const result = await bulkCreateScrapEntriesAction(effectiveDcNo, effectivePartCode, count, tagEntryBy, productDescription);
       console.log('bulkCreateScrapEntriesAction result:', result);
 
       setProgress(80);

@@ -416,12 +416,12 @@ export async function deleteConsolidatedDataEntryAction(id: string) {
 }
 
 // Server action to bulk create scrap PCB entries
-export async function bulkCreateScrapEntriesAction(dcNo: string, partCode: string, count: number, tagEntryBy: string) {
+export async function bulkCreateScrapEntriesAction(dcNo: string, partCode: string, count: number, tagEntryBy: string, productDescription?: string) {
   try {
     console.log(`=== BULK CREATE SCRAP ENTRIES ACTION: ${count} entries ===`);
 
     const { bulkCreateScrapEntries } = await import('@/lib/pg-db');
-    const result = await bulkCreateScrapEntries(dcNo, partCode, count, tagEntryBy);
+    const result = await bulkCreateScrapEntries(dcNo, partCode, count, tagEntryBy, productDescription);
 
     if (result.success) {
       // Broadcast SR No update to all connected WebSocket clients

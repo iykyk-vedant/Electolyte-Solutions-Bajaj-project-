@@ -845,7 +845,8 @@ export async function bulkCreateScrapEntries(
   dcNo: string,
   partCode: string,
   count: number,
-  tagEntryBy: string
+  tagEntryBy: string,
+  productDescription?: string
 ): Promise<{ success: boolean; startSrNo?: string; endSrNo?: string }> {
   const client = await pool.connect();
   try {
@@ -888,7 +889,7 @@ export async function bulkCreateScrapEntries(
         dcNo,              // dc_no
         'NA',              // branch
         'NA',              // bccd_name
-        'NA',              // product_description
+        productDescription || 'NA',  // product_description
         `SCRAP-${dcNo}-${currentSrNo}`,  // product_sr_no (must be unique per row)
         'NA',              // complaint_no
         partCode,          // part_code
