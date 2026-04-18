@@ -22,12 +22,21 @@ export function useRealtimeSrNo(initialSrNo: string = '0001'): UseRealtimeSrNoRe
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
 
-    // Determine WebSocket URL based on current page hostname
-    // This ensures it works on LAN — connects to the same host the page was loaded from
-    const wsHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3002';
-    const wsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = `${wsProtocol}://${wsHost}:${wsPort}`;
+    // Determine WebSocket URL:
+    // 1. If NEXT_PUBLIC_WS_URL is set, use it directly (e.g. ws://192.168.1.5:3002)
+    // 2. Otherwise, auto-detect from the current page hostname.
+    //    Always use ws:// (plain) because ws-server.js does NOT support TLS.
+    //    Using wss:// against a plain WS server causes silent connection failures
+    //    (this is the root cause of SR No not working on https://bajaj.app.local).
+    const explicitUrl = process.env.NEXT_PUBLIC_WS_URL;
+    let wsUrl: string;
+    if (explicitUrl) {
+      wsUrl = explicitUrl;
+    } else {
+      const wsHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+      const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3002';
+      wsUrl = `ws://${wsHost}:${wsPort}`;
+    }
 
     console.log(`[SR No WS] Connecting to ${wsUrl}...`);
 
