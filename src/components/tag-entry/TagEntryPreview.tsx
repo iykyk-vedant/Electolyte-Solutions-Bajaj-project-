@@ -257,7 +257,7 @@ export function TagEntryPreview({ open, onOpenChange, refreshTrigger }: TagEntry
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-6xl max-h-[90vh] !flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Tag Entry Preview</DialogTitle>
           <DialogDescription>
@@ -265,7 +265,7 @@ export function TagEntryPreview({ open, onOpenChange, refreshTrigger }: TagEntry
           </DialogDescription>
         </DialogHeader>
         
-        <div className="flex flex-col gap-4 flex-1 overflow-hidden">
+        <div className="flex flex-col gap-4 flex-1 min-h-0">
           {/* Search Bar */}
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
@@ -298,9 +298,8 @@ export function TagEntryPreview({ open, onOpenChange, refreshTrigger }: TagEntry
           </div>
           
           {/* Table */}
-          <div className="overflow-auto flex-1 border rounded-md">
-            <div className="overflow-x-auto">
-              <Table className="min-w-full">
+          <div className="border rounded-md min-h-0" style={{ overflow: 'auto', flex: '1 1 0%' }}>
+              <table className="w-full caption-bottom text-sm" style={{ minWidth: '2800px' }}>
                 <TableHeader className="sticky top-0 bg-gray-100 z-10">
                   <TableRow>
                     <TableHead className="w-[80px]">Sr. No.</TableHead>
@@ -430,8 +429,7 @@ export function TagEntryPreview({ open, onOpenChange, refreshTrigger }: TagEntry
                     </TableRow>
                   )}
                 </TableBody>
-              </Table>
-            </div>
+              </table>
           </div>
         </div>
         
