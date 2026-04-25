@@ -55,3 +55,9 @@ public/images/camera/
 
 # AI tools
 .qoder/
+
+#graphify
+graphify-out/cache/
+graphify-out/graph.html
+graphify-out/graph.json
+
