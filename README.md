@@ -1,201 +1,250 @@
-# NexScan: AI-Powered Handwritten Form Extraction
+# NexScan — AI-Powered Industrial Tag & Consumption Management
 
-NexScan is a Next.js application designed to capture, extract, and validate data from handwritten forms using the power of Generative AI. Users can upload an image of a form or use their device's camera to capture one. The AI then processes the image, extracts the relevant information into structured fields, and presents it in a form for review and validation.
+NexScan is a full-stack Next.js application built for **Bajaj Auto** to digitise, track, and manage tag entries, part consumption, dispatch records, and PCB serial numbers on the shop floor. It uses **Google Gemini AI** to extract data from handwritten forms, **Supabase** for authentication, **PostgreSQL (Neon)** for persistence, and a **WebSocket server** for real-time serial-number synchronisation across connected clients.
 
-## Running the Project Locally
+---
 
-To run this project on your local machine using an editor like Visual Studio Code, follow these steps.
+## Features
 
-### Prerequisites
+| Area | Capabilities |
+|---|---|
+| **AI Extraction** | Upload or capture a photo of a handwritten form → Gemini extracts structured fields (branch, complaint no., product description, etc.) → review & save |
+| **Tag Entry** | Create / edit / delete tag entries with auto-assigned monthly SR numbers, DC number management, PCB serial generation, and real-time sync |
+| **Consumption** | Record part consumption against tag entries with BOM validation, component-level tracking, and Excel export |
+| **Dispatch** | Manage dispatch records linked to tag entries |
+| **Search PCB** | Look up any PCB serial number to find associated tag entry details |
+| **Bulk Scrap Upload** | Upload multiple scrap PCB entries at once with atomic serial-number assignment |
+| **Admin Dashboard** | Analytics on DC numbers, part codes, per-user entry counts, and consolidated data management with pagination |
+| **Authentication** | Supabase-powered login/signup, forgot-password flow, role-based access (admin vs. user) |
+| **Real-time Sync** | Standalone WebSocket server broadcasts SR number updates so every open client always shows the next available number |
+| **Excel Export** | Export tag entries and consumption records to `.xlsx` via server-side API routes |
+| **BOM Import** | Import Bills of Material from Excel/CSV/JSON for consumption validation |
 
-- [Node.js](https://nodejs.org/en) (v18 or later recommended)
-- [npm](https://www.npmjs.com/) (comes with Node.js)
-- A Google AI API Key. You can get one from [Google AI Studio](https://aistudio.google.com/app/apikey).
+---
 
-### 1. Installation
+## Tech Stack
 
-First, open the project folder in Visual Studio Code. Then, open the integrated terminal (you can use `Ctrl+\``) and install the necessary project dependencies by running:
+- **Framework** — [Next.js 16](https://nextjs.org/) (App Router, Turbopack)
+- **Language** — TypeScript
+- **Styling** — Tailwind CSS + [shadcn/ui](https://ui.shadcn.com/) (Radix primitives)
+- **AI** — [Genkit](https://github.com/firebase/genkit) with `@genkit-ai/google-genai` (Gemini 2.5 Flash)
+- **Auth** — [Supabase Auth](https://supabase.com/auth) (email/password, JWT)
+- **Database** — PostgreSQL via [Neon](https://neon.tech/) (using `pg` driver)
+- **Real-time** — Custom Node.js WebSocket server (`ws`)
+- **State** — [Zustand](https://zustand-demo.pmnd.rs/), React Context
+- **Forms** — React Hook Form + Zod validation
+- **Charts** — Recharts
+- **Firebase** — Firestore (legacy/secondary data layer)
+- **Excel** — ExcelJS for import/export
+
+---
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) v18+
+- A **PostgreSQL** database (Neon recommended, or local)
+- A **Supabase** project (for authentication)
+- A **Google Gemini API** key — get one at [Google AI Studio](https://aistudio.google.com/app/apikey)
+
+---
+
+## Getting Started
+
+### 1. Install dependencies
 
 ```bash
 npm install
 ```
 
-### 2. Set Up Environment Variables
+### 2. Configure environment variables
 
-This project requires an API key to connect to Google's AI services and MySQL database configuration.
+Copy the example file and fill in your credentials:
 
-1.  Create a new file named `.env` in the root of your project directory.
-2.  Add your Google AI API key and MySQL database configuration to this file as follows:
-
-```env
-# MySQL Database Configuration
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=your_mysql_username
-MYSQL_PASSWORD=your_mysql_password
-MYSQL_DATABASE=nexscan
-
-# Gemini API Key (required for AI features)
-GEMINI_API_KEY=YOUR_API_KEY_HERE
-
-# Google API Key (optional)
-GOOGLE_API_KEY=
+```bash
+cp .env.example .env
 ```
 
-Replace `YOUR_API_KEY_HERE` with the actual key you obtained from Google AI Studio.
+Key variables:
 
-For MySQL configuration:
-- `MYSQL_HOST`: Your MySQL server host (usually localhost)
-- `MYSQL_PORT`: Your MySQL server port (usually 3306)
-- `MYSQL_USER`: Your MySQL username
-- `MYSQL_PASSWORD`: Your MySQL password
-- `MYSQL_DATABASE`: The database name (nexscan by default)
-### 3. Initialize the MySQL Database
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-Before running the application, you need to initialize the MySQL database tables:
+# PostgreSQL (Neon)
+DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/dbname?sslmode=require
+
+# Gemini AI
+GEMINI_API_KEY=your-gemini-api-key
+
+# App
+PORT=3000
+NEXT_PUBLIC_APP_URL=http://localhost:3001
+JWT_SECRET=your-jwt-secret
+```
+
+See [`.env.example`](.env.example) for the full list.
+
+### 3. Initialise the database
 
 ```bash
 npm run init-db
 ```
 
-This command will create the necessary tables in your MySQL database for storing sheet data.
+This creates all required PostgreSQL tables (`consolidated_data`, `users`, `engineers`, DC numbers, BOM, etc.).
 
-### 4. Run the Development Servers
+### 4. (Optional) Import Bill of Materials
 
-This application consists of two main parts that need to be run simultaneously in separate terminals:
+```bash
+npm run import-bom
+```
 
-1.  **The Next.js Web Application:** This is the user interface.
-2.  **The Genkit AI Flows:** This is the backend service that runs the AI models.
+### 5. Start development servers
 
-You'll need two separate terminal windows or use VS Code's split terminal feature.
-
-**In your first terminal, run the Next.js app:**
+A single command starts both the Next.js app and the WebSocket server concurrently:
 
 ```bash
 npm run dev
 ```
 
-This will start the web server, typically on `http://localhost:3001`.
-**In your second terminal, run the Genkit server:**
+| Service | URL |
+|---|---|
+| Next.js app | `http://localhost:3001` |
+| WebSocket server | `ws://localhost:3002` |
+| WS health check | `http://localhost:3002/health` |
+
+> You can also start them individually with `npm run dev:next` and `npm run dev:ws`.
+
+To run the Genkit AI development server (for testing flows in the Genkit UI):
 
 ```bash
 npm run genkit:dev
 ```
 
-This starts the Genkit development server, which makes the AI flows available for the Next.js application to call.
-### 5. Access the Application
+---
 
-Once both servers are running, open your web browser and navigate to:
+## Project Structure
 
-[http://localhost:3001](http://localhost:3001)
-You should now see the NexScan application running and be able to use its features.
-## Project Structure & File Explanations
-
-This project is built with Next.js (App Router), TypeScript, Tailwind CSS, and ShadCN UI components. AI capabilities are powered by Google's Gemini model via Genkit.
-
-## MySQL Persistence
-
-This project now includes MySQL persistence for storing sheet data. Previously, sheet data was stored in the browser's localStorage, which meant that data would be lost when the browser cache was cleared or when accessing the application from a different device.
-
-With MySQL persistence:
-- Sheet data is stored in a MySQL database
-- Data persists across browser sessions and device changes
-- Multiple users can access the same sheet data (when implemented with user authentication)
-- Data is more secure and reliable than localStorage
-
-The implementation includes:
-- Database connection pooling for efficient resource usage
-- Automatic table creation for sheets and sheet data
-- CRUD operations for managing sheet data
-- Error handling for database operations
-### Root Directory
-
-- **`.env`**: Stores environment variables. For this project, it holds the `GEMINI_API_KEY` for the AI service.
-- **`apphosting.yaml`**: Configuration file for deploying the application on Firebase App Hosting.
-- **`components.json`**: The configuration file for `shadcn/ui`. It defines the style, component library path, and color settings for the UI components.
-- **`next.config.ts`**: The main configuration file for Next.js. It includes settings for TypeScript, ESLint, and importantly, configures allowed remote image domains (`picsum.photos`, `images.unsplash.com`).
-- **`package.json`**: Lists all project dependencies (like `next`, `react`, `genkit`, `lucide-react`) and defines scripts for running, building, and linting the application (e.g., `npm run dev`).
-- **`README.md`**: This file, providing an overview and documentation of the project.
-- **`tailwind.config.ts`**: The configuration file for Tailwind CSS. It sets up the visual design of the app, including custom fonts and a color palette based on CSS variables defined in `globals.css`.
-- **`tsconfig.json`**: The TypeScript compiler configuration file. It sets rules for how TypeScript code is checked and compiled, and defines path aliases (like `@/*`) for cleaner imports.
+```
+bajaj-part-2/
+├── migrations/             # SQL migration scripts
+├── public/                 # Static assets
+├── src/
+│   ├── ai/                 # Genkit AI configuration & flows
+│   │   ├── flows/          # AI extraction & translation flows
+│   │   ├── schemas/        # Zod schemas for AI I/O
+│   │   ├── genkit.ts       # Genkit instance setup (Gemini 2.5 Flash)
+│   │   └── dev.ts          # Genkit dev server entry
+│   ├── app/                # Next.js App Router
+│   │   ├── actions/        # Server Actions (admin, consumption, DB, images, sheets)
+│   │   ├── actions.ts      # AI extraction server action
+│   │   ├── api/            # API routes (auth, camera, DC numbers, engineers, export)
+│   │   ├── admin/          # Admin dashboard page
+│   │   ├── consumption/    # Consumption entry page
+│   │   ├── dashboard/      # User dashboard (layout + page)
+│   │   ├── forgot-password/
+│   │   ├── login/
+│   │   ├── reset-password/
+│   │   ├── signup/
+│   │   ├── tag-entry/      # Tag entry page
+│   │   ├── layout.tsx      # Root layout
+│   │   ├── page.tsx        # Home / AI extraction page
+│   │   └── globals.css     # Global styles & CSS variables
+│   ├── components/
+│   │   ├── tag-entry/      # Tag entry feature components
+│   │   │   ├── TagEntryForm.tsx       # Main tag entry form
+│   │   │   ├── TagEntryPreview.tsx    # Print-ready preview dialog
+│   │   │   ├── ConsumptionTab.tsx     # Part consumption tracking
+│   │   │   ├── DispatchTab.tsx        # Dispatch management
+│   │   │   ├── SearchPCBTab.tsx       # PCB serial lookup
+│   │   │   ├── BulkScrapTab.tsx       # Bulk scrap upload
+│   │   │   ├── FindTab.tsx            # Search entries
+│   │   │   ├── SettingsTab.tsx        # Entry settings
+│   │   │   ├── FindPCBSection.tsx
+│   │   │   ├── LockButton.tsx
+│   │   │   └── StatusBar.tsx
+│   │   ├── ui/             # shadcn/ui components (36 components)
+│   │   ├── image-uploader.tsx
+│   │   ├── sheet-overview.tsx
+│   │   ├── validate-data-section.tsx
+│   │   ├── validate-consumption-section.tsx
+│   │   └── UserProfile.tsx
+│   ├── context/            # React Context (TagEntryContext)
+│   ├── contexts/           # Auth Context (Supabase session)
+│   ├── firebase/           # Firebase/Firestore integration
+│   ├── hooks/              # Custom hooks
+│   │   ├── use-toast.ts
+│   │   ├── use-mobile.tsx
+│   │   └── useRealtimeSrNo.ts  # WebSocket SR No. hook
+│   ├── lib/                # Utilities & services
+│   │   ├── auth/           # Auth service & middleware
+│   │   ├── api/            # API helper utilities
+│   │   ├── tag-entry/      # Tag entry types & export utils
+│   │   ├── pg-db.ts        # PostgreSQL database layer (all queries)
+│   │   ├── pg-init-db.ts   # Database initialisation script
+│   │   ├── pcb-utils.ts    # PCB serial number generation
+│   │   ├── consumption-validation-service.ts
+│   │   ├── bom-import.ts   # BOM import logic
+│   │   ├── event-emitter.ts
+│   │   └── ...
+│   └── store/              # Zustand stores (lockStore)
+├── ws-server.js            # Standalone WebSocket server for SR No. sync
+├── package.json
+├── tailwind.config.ts
+├── tsconfig.json
+├── next.config.mjs
+├── components.json         # shadcn/ui config
+└── .env.example            # Environment variable template
+```
 
 ---
 
-### `src/ai` - Artificial Intelligence
+## Key Architecture Decisions
 
-This directory contains the core AI logic, powered by Genkit.
+### Real-time SR Number Sync
 
-- **`genkit.ts`**: Initializes and configures the Genkit instance. It specifies the AI plugin to use (`@genkit-ai/google-genai`) and sets the default model for the application, which is `googleai/gemini-2.5-flash`.
-- **`dev.ts`**: A development file used by the Genkit CLI to start and manage the AI flows during local development. It imports the flow files to make them available to the Genkit development server.
+A standalone WebSocket server (`ws-server.js`, port 3002) runs alongside Next.js. When a tag entry is saved, the Next.js server action calls `POST /broadcast` on the WS server, which queries PostgreSQL for the next available SR number and pushes it to all connected clients via WebSocket. The `useRealtimeSrNo` hook on the client consumes these updates.
 
-#### `src/ai/flows`
+### PCB Serial Number Generation
 
-This sub-directory holds the Genkit "flows," which are server-side functions that orchestrate calls to the AI model.
+PCB numbers are generated using a deterministic format incorporating the DC number, part code, and current month/year. The generation logic lives in `src/lib/pcb-utils.ts`.
 
-- **`extract-data-from-handwritten-form.ts`**:
-  - Defines the primary AI flow for the application.
-  - It takes a photo of a form (as a Base64 data URI) as input.
-  - It uses the Gemini model to analyze the image and extract data into a structured JSON object with fields like `branch`, `productDescription`, `complaintNo`, etc.
-  - It also defines a field `others` to capture any text that doesn't fit into the predefined categories.
-  - It exports the `extractData` function and its associated input/output TypeScript types (`ExtractDataInput`, `ExtractDataOutput`).
+### Authentication Flow
 
-- **`improve-extraction-accuracy-with-llm.ts`**:
-  - Defines a secondary (currently unused but available) flow designed to refine OCR results.
-  - It would take raw text from an OCR process and the form image to correct and structure the data. This provides a potential two-step extraction process for higher accuracy if needed in the future.
+Supabase handles email/password authentication. The `AuthContext` provider manages session state, and the `auth-service.ts` module handles server-side JWT verification. Password reset emails redirect through configurable URLs (`NEXT_PUBLIC_APP_URL`).
+
+### Database Layer
+
+All PostgreSQL queries are centralised in `src/lib/pg-db.ts` using the `pg` driver with connection pooling. Database initialisation (`npm run init-db`) creates all tables idempotently.
 
 ---
 
-### `src/app` - Application UI & Routing
+## Available Scripts
 
-This is the heart of the Next.js application, following the App Router paradigm.
-
-- **`layout.tsx`**: The root layout of the application. It wraps all pages, applies the global stylesheet (`globals.css`), includes custom fonts from Google Fonts, and sets up the `Toaster` component for displaying notifications.
-- **`page.tsx`**: The main page of the application (`/`).
-  - This is a client-side component (`'use client'`) that manages the application's state, including the uploaded image, loading status, and extracted data.
-  - It orchestrates the interaction between the `ImageUploader` and `DataForm` components.
-  - When an image is ready, it calls the `extractDataFromImage` server action.
-- **`actions.ts`**: A file for Next.js Server Actions.
-  - It exports the `extractDataFromImage` function, which acts as a bridge between the client-side components and the server-side AI flow. It calls the `extractData` flow from the AI directory and handles any potential errors, returning a consistent state object to the client.
-- **`globals.css`**: The global stylesheet. It includes base Tailwind CSS layers and defines the application's color theme using HSL CSS variables for both light and dark modes (e.g., `--primary`, `--background`).
-
----
-
-### `src/components` - Reusable UI Components
-
-This directory contains all the React components used to build the user interface.
-
-- **`image-uploader.tsx`**: A component that allows the user to either upload an image file or use their device's camera.
-  - It displays a preview of the image or the live camera feed.
-  - It handles camera permissions and provides keyboard shortcuts (Enter to capture, Escape to toggle camera mode).
-  - When an image is captured or uploaded, it converts it to a data URI and passes it to the parent component (`page.tsx`) via the `onImageReady` prop.
-- **`data-form.tsx`**: A form to display, validate, and edit the data extracted by the AI.
-  - It uses `react-hook-form` for form state management and `zod` for validation.
-  - It dynamically populates the form fields with the `initialData` received from the AI.
-  - It includes functionality to "Export to CSV" and "Save Changes."
-  - It contains a separate, non-editable "Other Extracted Text" area at the bottom to display any miscellaneous text captured by the AI, which is not part of the main form data and is discarded on save.
-
-#### `src/components/ui`
-
-This sub-directory contains general-purpose UI components provided by `shadcn/ui`, which are styled with Tailwind CSS. These include:
-
-- `button.tsx`
-- `card.tsx`
-- `input.tsx`
-- `label.tsx`
-- `textarea.tsx`
-- `toast.tsx` & `toaster.tsx`
-- And many others that provide the building blocks for the application's interface.
+| Script | Description |
+|---|---|
+| `npm run dev` | Start Next.js + WebSocket server (development) |
+| `npm run dev:next` | Start only the Next.js app |
+| `npm run dev:ws` | Start only the WebSocket server |
+| `npm run build` | Production build |
+| `npm run start` | Start production servers |
+| `npm run genkit:dev` | Start Genkit AI dev server |
+| `npm run init-db` | Initialise PostgreSQL tables |
+| `npm run import-bom` | Import Bill of Materials data |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | Run TypeScript type checking |
 
 ---
 
-### `src/hooks` - Custom React Hooks
+## Deployment
 
-- **`use-toast.ts`**: A custom hook for showing "toast" notifications. It provides a `toast()` function that can be called from any component to display messages (e.g., "Extraction Successful").
-- **`use-mobile.tsx`**: A utility hook to detect if the user is on a mobile device based on screen width.
+The application can be deployed on **Vercel** (Next.js) with a **Neon** PostgreSQL database and **Supabase** for auth. See [`Vercel_Deployment_Guide.md`](Vercel_Deployment_Guide.md) for detailed instructions.
+
+For LAN deployment, configure `NEXT_PUBLIC_APP_URL` to your local domain (e.g., `https://bajaj.app.local`).
 
 ---
 
-### `src/lib` - Library & Utility Functions
+## License
 
-- **`utils.ts`**: Contains utility functions. The `cn` function is a helper that merges Tailwind CSS classes, making it easier to apply conditional styling.
-- **`placeholder-images.json`** & **`placeholder-images.ts`**: These files manage placeholder images for the app. The JSON file defines a list of images, and the TypeScript file exports them as a typed array, ensuring consistent use of placeholders throughout the app.
+Private — internal use only.
