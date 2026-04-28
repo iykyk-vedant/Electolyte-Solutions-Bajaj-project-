@@ -327,6 +327,10 @@ export default function AdminDashboard() {
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-1 flex items-center gap-2">
               <button
                 onClick={() => {
+                  if (selectedDate === 'overall') {
+                    setSelectedDate(new Date().toISOString().split('T')[0]);
+                    return;
+                  }
                   const d = new Date(selectedDate);
                   d.setDate(d.getDate() - 1);
                   setSelectedDate(d.toISOString().split('T')[0]);
@@ -345,6 +349,10 @@ export default function AdminDashboard() {
               />
               <button
                 onClick={() => {
+                  if (selectedDate === 'overall') {
+                    setSelectedDate(new Date().toISOString().split('T')[0]);
+                    return;
+                  }
                   const d = new Date(selectedDate);
                   d.setDate(d.getDate() + 1);
                   setSelectedDate(d.toISOString().split('T')[0]);

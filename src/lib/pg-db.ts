@@ -1426,28 +1426,34 @@ export async function getAdminEntryCountsByDate(date: string): Promise<{
   consumptionEntries: { user_name: string; count: number }[];
 }> {
   try {
-    // Tag entries: count rows where tag_entry_by is set and created_at matches the date
+    // Build date filter conditionally — skip it for 'overall' (all-time) view
+    const isOverall = !date || date === 'overall';
+    const tagDateFilter = isOverall ? '' : `AND created_at::date = $1::date`;
+    const consumptionDateFilter = isOverall ? '' : `AND updated_at::date = $1::date`;
+    const params = isOverall ? [] : [date];
+
+    // Tag entries: count rows where tag_entry_by is set
     const tagResult = await pool.query(
       `SELECT tag_entry_by AS user_name, COUNT(*)::int AS count
        FROM consolidated_data
        WHERE tag_entry_by IS NOT NULL
          AND tag_entry_by != ''
-         AND created_at::date = $1::date
+         ${tagDateFilter}
        GROUP BY tag_entry_by
        ORDER BY tag_entry_by ASC`,
-      [date]
+      params
     );
 
-    // Consumption entries: count rows where consumption_entry_by is set and updated_at matches the date
+    // Consumption entries: count rows where consumption_entry_by is set
     const consumptionResult = await pool.query(
       `SELECT consumption_entry_by AS user_name, COUNT(*)::int AS count
        FROM consolidated_data
        WHERE consumption_entry_by IS NOT NULL
          AND consumption_entry_by != ''
-         AND updated_at::date = $1::date
+         ${consumptionDateFilter}
        GROUP BY consumption_entry_by
        ORDER BY consumption_entry_by ASC`,
-      [date]
+      params
     );
 
     return {
