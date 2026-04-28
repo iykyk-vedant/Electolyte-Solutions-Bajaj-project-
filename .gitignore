@@ -44,5 +44,20 @@ next-env.d.ts
 firebase-debug.log
 firestore-debug.log
 
+# data files
+*.xlsx
+
+# uploads
+public/uploads/
+
 # camera captured images
 public/images/camera/
+
+# AI tools
+.qoder/
+
+#graphify
+graphify-out/cache/
+graphify-out/graph.html
+graphify-out/graph.json
+

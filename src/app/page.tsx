@@ -15,6 +15,8 @@ import { SettingsTab } from '@/components/tag-entry/SettingsTab';
 import { FindTab } from '@/components/tag-entry/FindTab';
 import { DispatchTab } from '@/components/tag-entry/DispatchTab';
 import { ConsumptionTab } from '@/components/tag-entry/ConsumptionTab';
+import { SearchPCBTab } from '@/components/tag-entry/SearchPCBTab';
+import { BulkScrapTab } from '@/components/tag-entry/BulkScrapTab';
 import { ValidateConsumptionSection } from '@/components/validate-consumption-section';
 
 import { ScanText, Download, History, Plus, Trash2, MoreVertical, Edit, Eye } from 'lucide-react';
@@ -108,7 +110,7 @@ export default function Home() {
 
   // Tag Entry states
   const [activeTab, setActiveTab] = useState<
-    "tag-entry" | "dispatch" | "consumption"
+    "tag-entry" | "dispatch" | "consumption" | "search-pcb" | "bulk-scrap"
   >("tag-entry");
 
   // Separate engineer name states for each tab
@@ -769,6 +771,24 @@ export default function Home() {
             >
               Dispatch
             </button>
+            <button
+              className={`py-2 px-4 font-medium text-sm ${activeTab === "search-pcb"
+                ? "border-b-2 border-blue-500 text-blue-600"
+                : "text-gray-500 hover:text-gray-700"
+                }`}
+              onClick={() => setActiveTab("search-pcb")}
+            >
+              Search PCB
+            </button>
+            <button
+              className={`py-2 px-4 font-medium text-sm ${activeTab === "bulk-scrap"
+                ? "border-b-2 border-orange-500 text-orange-600"
+                : "text-gray-500 hover:text-gray-700"
+                }`}
+              onClick={() => setActiveTab("bulk-scrap")}
+            >
+              Bulk Scrap
+            </button>
           </div>
           {activeTab === "consumption" && (
             <div className="flex items-center">
@@ -831,6 +851,24 @@ export default function Home() {
               dcPartCodes={dcPartCodes}
               engineerName={consumptionEngineerName}
               onEngineerNameChange={setConsumptionEngineerName}
+            />
+          </div>
+        )}
+
+        {activeTab === "search-pcb" && (
+          <div className="w-full bg-white rounded-lg shadow-md p-6 flex-1">
+            <SearchPCBTab
+              dcNumbers={dcNumbers}
+              dcPartCodes={dcPartCodes}
+            />
+          </div>
+        )}
+
+        {activeTab === "bulk-scrap" && (
+          <div className="w-full bg-white rounded-lg shadow-md p-6 flex-1">
+            <BulkScrapTab
+              dcNumbers={dcNumbers}
+              dcPartCodes={dcPartCodes}
             />
           </div>
         )}

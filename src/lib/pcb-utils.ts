@@ -62,8 +62,11 @@ export const generatePcbNumber = (partCode: string, srNo?: string, mfgMonthYear?
   const cleanPartCode = partCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
   const partCodeSegment = cleanPartCode.substring(0, 7).padEnd(7, '0');
 
-  // Parse month/year from provided mfgMonthYear, fallback to current date
-  const { monthCode, yearStr } = parseMfgMonthYear(mfgMonthYear);
+  // Always use today's month and year (hardcoded to current date)
+  const codes = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+  const dateObj = new Date();
+  const monthCode = codes[dateObj.getMonth()] ?? 'A';
+  const yearStr = String(dateObj.getFullYear()).slice(-2);
 
   // Use SR number if provided, otherwise use counter (default 1)
   let identifier;

@@ -460,13 +460,19 @@ export function TagEntryForm({ initialData, dcNumbers = [], dcPartCodes = {}, on
         // Notify listeners (e.g., counter footer) that an entry was saved
         tagEntryEventEmitter.emit(TAG_ENTRY_EVENTS.ENTRY_SAVED);
 
-        // WebSocket will automatically push the next SR No to all clients.
-        // No need to manually fetch — just clear the form.
+        // Compute the next SR No immediately from the one just saved,
+        // so the field shows the correct value without waiting for WebSocket.
+        const savedNum = parseInt(savedSrNo, 10);
+        const immediateNextSrNo = isNaN(savedNum)
+          ? savedSrNo
+          : String(savedNum + 1).padStart(4, '0');
+
         let preservedMonth = formData.mfgMonthYear;
         isEditingExistingRef.current = false;
 
-        // Pass undefined for nextSrNo — WebSocket will update it shortly
-        handleClear(undefined, preservedMonth);
+        // Pass the computed next SR No so the form shows it right away.
+        // WebSocket will also broadcast the same value shortly and keep it in sync.
+        handleClear(immediateNextSrNo, preservedMonth);
         setShowSavedList(true);
       } else {
         console.log('SAVE FAILED:', result.error);

@@ -1293,17 +1293,6 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
               Clear
             </button>
             <button
-              onClick={async () => {
-                // Call server action instead of importing pg-db directly
-                const result = await fetch('/api/test-db', { method: 'POST' });
-                const data = await result.json();
-                alert(`Database test ${data.success ? 'PASSED' : 'FAILED'} - Check console for details`);
-              }}
-              className="px-3 py-1 text-sm bg-orange-500 text-white rounded hover:bg-orange-600"
-            >
-              Test DB
-            </button>
-            <button
               onClick={handleExportExcel}
               className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
             >
