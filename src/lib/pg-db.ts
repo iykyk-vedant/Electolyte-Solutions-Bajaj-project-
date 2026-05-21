@@ -45,11 +45,31 @@ export async function initializeDatabase() {
         id SERIAL PRIMARY KEY,
         part_code VARCHAR(255) NOT NULL,
         location VARCHAR(255) NOT NULL,
-        description TEXT,
+        description TEXT NOT NULL DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE (part_code, location)
+        UNIQUE (part_code, location, description)
       )
     `);
+
+    // Migration: update bom table unique constraint to include description (for existing databases)
+    try {
+      await pool.query(`UPDATE bom SET description = '' WHERE description IS NULL`);
+      await pool.query(`ALTER TABLE bom ALTER COLUMN description SET NOT NULL`);
+      await pool.query(`ALTER TABLE bom ALTER COLUMN description SET DEFAULT ''`);
+      await pool.query(`ALTER TABLE bom DROP CONSTRAINT IF EXISTS bom_part_code_location_key`);
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'bom_part_code_location_description_key'
+          ) THEN
+            ALTER TABLE bom ADD CONSTRAINT bom_part_code_location_description_key UNIQUE (part_code, location, description);
+          END IF;
+        END $$;
+      `);
+      console.log('BOM table unique constraint updated to include description');
+    } catch (bomMigrationError) {
+      console.log('BOM constraint migration attempted - may already be applied');
+    }
 
     // Create dc_numbers table for storing DC numbers and their part codes
     await pool.query(`
@@ -590,6 +610,58 @@ export async function checkComponentForPartCode(partCode: string, location: stri
   } catch (error) {
     console.error('Error checking component for part code:', error);
     return false;
+  }
+}
+
+// Bulk insert BOM entries with duplicate skip
+export async function bulkInsertBomEntries(
+  entries: { partCode: string; location: string; description: string }[]
+): Promise<{ inserted: number; skipped: number }> {
+  if (entries.length === 0) {
+    return { inserted: 0, skipped: 0 };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    let totalInserted = 0;
+    const CHUNK_SIZE = 500;
+
+    for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+      const chunk = entries.slice(i, i + CHUNK_SIZE);
+      const valuesList: string[] = [];
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      for (const entry of chunk) {
+        valuesList.push(`($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2})`);
+        params.push(entry.partCode, entry.location, entry.description);
+        paramIndex += 3;
+      }
+
+      const result = await client.query(
+        `INSERT INTO bom (part_code, location, description)
+         VALUES ${valuesList.join(', ')}
+         ON CONFLICT (part_code, location, description) DO NOTHING`,
+        params
+      );
+
+      totalInserted += result.rowCount || 0;
+    }
+
+    await client.query('COMMIT');
+
+    return {
+      inserted: totalInserted,
+      skipped: entries.length - totalInserted,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error bulk inserting BOM entries:', error);
+    throw error;
+  } finally {
+    client.release();
   }
 }
 

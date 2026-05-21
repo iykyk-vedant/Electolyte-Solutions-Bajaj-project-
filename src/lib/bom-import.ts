@@ -61,7 +61,7 @@ export async function importBomFromCsv(csvFilePath: string): Promise<{ success: 
     for (const [partCode, location, description] of bomData) {
       try {
         await pool.query(
-          'INSERT INTO bom (part_code, location, description) VALUES ($1, $2, $3) ON CONFLICT (part_code, location) DO NOTHING',
+          'INSERT INTO bom (part_code, location, description) VALUES ($1, $2, $3) ON CONFLICT (part_code, location, description) DO NOTHING',
           [partCode, location, description]
         );
         insertedCount++;
@@ -142,7 +142,7 @@ export async function importBomFromJson(jsonFilePath: string): Promise<{ success
         
         try {
           await pool.query(
-            'INSERT INTO bom (part_code, location, description) VALUES ($1, $2, $3) ON CONFLICT (part_code, location) DO NOTHING',
+            'INSERT INTO bom (part_code, location, description) VALUES ($1, $2, $3) ON CONFLICT (part_code, location, description) DO NOTHING',
             [sanitizedPartCode, sanitizedLocation, sanitizedDescription]
           );
           insertedCount++;
@@ -231,7 +231,7 @@ export async function importBomFromExcel(excelFilePath: string): Promise<{ succe
     for (const [partCode, location, description] of bomData) {
       try {
         await pool.query(
-          'INSERT INTO bom (part_code, location, description) VALUES ($1, $2, $3) ON CONFLICT (part_code, location) DO NOTHING',
+          'INSERT INTO bom (part_code, location, description) VALUES ($1, $2, $3) ON CONFLICT (part_code, location, description) DO NOTHING',
           [partCode, location, description]
         );
         insertedCount++;
