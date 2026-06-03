@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { searchConsolidatedDataEntriesByPcb } from '@/app/actions/consumption-actions';
+import { searchConsolidatedDataEntriesByPcb, updateConsolidatedDataEntryByProductSrNoAction } from '@/app/actions/consumption-actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useLockStore } from '@/store/lockStore';
 import { LockButton } from '@/components/tag-entry/LockButton';
 import { getPcbNumberForDc } from '@/lib/pcb-utils';
-import { Search, RotateCcw } from 'lucide-react';
+import { Search, RotateCcw, Pencil, Save, X } from 'lucide-react';
 
 interface SearchPCBTabProps {
   dcNumbers: string[];
@@ -45,9 +45,16 @@ interface PCBDetails {
   dispatchEntryBy: string;
   tagEntryBy: string;
   consumptionEntryBy: string;
+  remark: string;
   createdAt: string;
   updatedAt: string;
 }
+
+// Fields that are NOT editable (per user requirement)
+const NON_EDITABLE_FIELDS = new Set([
+  'srNo', 'dcNo', 'productDescription', 'partCode', 'pcbSrNo', 'tagEntryBy', 'consumptionEntryBy',
+  'id', 'createdAt', 'updatedAt',
+]);
 
 // Helper to format a date value to display string
 function formatDate(val: any): string {
@@ -96,6 +103,7 @@ function mapEntryToDetails(entry: any): PCBDetails {
     dispatchEntryBy: entry.dispatch_entry_by || '',
     tagEntryBy: entry.tag_entry_by || '',
     consumptionEntryBy: entry.consumption_entry_by || '',
+    remark: entry.remark || '',
     createdAt: formatDate(entry.created_at),
     updatedAt: formatDate(entry.updated_at),
   };
@@ -116,6 +124,11 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
   const [selectedDetails, setSelectedDetails] = useState<PCBDetails | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+
+  // Edit mode
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<PCBDetails | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleSrNoIncrement = () => {
     const currentSrNo = parseInt(srNo || '0');
@@ -143,6 +156,8 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
 
     setIsSearching(true);
     setHasSearched(true);
+    setIsEditing(false);
+    setEditData(null);
 
     try {
       // Generate PCB Sr No (same as consumption tab)
@@ -198,6 +213,8 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
 
   const handleSelectResult = (entry: any) => {
     setSelectedDetails(mapEntryToDetails(entry));
+    setIsEditing(false);
+    setEditData(null);
   };
 
   const handleClear = () => {
@@ -207,6 +224,80 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
     setSearchResults([]);
     setSelectedDetails(null);
     setHasSearched(false);
+    setIsEditing(false);
+    setEditData(null);
+  };
+
+  // Edit mode handlers
+  const handleStartEdit = () => {
+    if (selectedDetails) {
+      setEditData({ ...selectedDetails });
+      setIsEditing(true);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditData(null);
+  };
+
+  const handleEditChange = (field: keyof PCBDetails, value: string) => {
+    if (editData) {
+      setEditData({ ...editData, [field]: value });
+    }
+  };
+
+  const handleSave = async () => {
+    if (!editData || !editData.productSrNo) {
+      toast({ variant: 'destructive', title: 'Error', description: 'No entry to save.' });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const updateResult = await updateConsolidatedDataEntryByProductSrNoAction(editData.productSrNo, {
+        srNo: editData.srNo,
+        dcNo: editData.dcNo,
+        dcDate: editData.dcDate,
+        branch: editData.branch,
+        bccdName: editData.bccdName,
+        productDescription: editData.productDescription,
+        productSrNo: editData.productSrNo,
+        dateOfPurchase: editData.dateOfPurchase,
+        complaintNo: editData.complaintNo,
+        partCode: editData.partCode,
+        natureOfDefect: editData.natureOfDefect,
+        visitingTechName: editData.visitingTechName,
+        mfgMonthYear: editData.mfgMonthYear,
+        pcbSrNo: editData.pcbSrNo,
+        repairDate: editData.repairDate,
+        testing: editData.testing,
+        failure: editData.failure,
+        status: editData.status,
+        analysis: editData.analysis,
+        componentChange: editData.componentChange,
+        enggName: editData.enggName,
+        dispatchDate: editData.dispatchDate,
+        dispatchEntryBy: editData.dispatchEntryBy,
+        tagEntryBy: editData.tagEntryBy,
+        consumptionEntryBy: editData.consumptionEntryBy,
+        remark: editData.remark,
+      });
+
+      if (updateResult.success) {
+        setSelectedDetails({ ...editData });
+        setIsEditing(false);
+        setEditData(null);
+        toast({ title: 'Saved', description: 'PCB entry updated successfully.' });
+      } else {
+        toast({ variant: 'destructive', title: 'Save Failed', description: updateResult.error || 'Failed to save changes.' });
+      }
+    } catch (error) {
+      console.error('Error saving PCB entry:', error);
+      toast({ variant: 'destructive', title: 'Save Failed', description: 'An error occurred while saving.' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Reset selection when search params change
@@ -215,36 +306,127 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
       setSelectedDetails(null);
       setSearchResults([]);
       setHasSearched(false);
+      setIsEditing(false);
+      setEditData(null);
     }
   }, [partCode, mfgMonthYear, srNo]);
 
-  // Detail row component for the vertical layout
-  const DetailRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex border-b border-gray-100 last:border-b-0">
-      <div className="w-2/5 py-2.5 px-4 bg-gray-50 text-sm font-medium text-gray-600 border-r border-gray-100">
-        {label}
+  // Detail row component - supports read and edit modes
+  const DetailRow = ({ label, field, value, type = 'text' }: { label: string; field: keyof PCBDetails; value: string; type?: string }) => {
+    const isFieldEditable = isEditing && !NON_EDITABLE_FIELDS.has(field);
+    const currentValue = isEditing && editData ? editData[field] : value;
+
+    return (
+      <div className="flex border-b border-gray-100 last:border-b-0">
+        <div className="w-2/5 py-2.5 px-4 bg-gray-50 text-sm font-medium text-gray-600 border-r border-gray-100">
+          {label}
+        </div>
+        <div className="w-3/5 py-2.5 px-4 text-sm text-gray-900">
+          {isFieldEditable ? (
+            type === 'select-status' ? (
+              <select
+                value={currentValue || ''}
+                onChange={(e) => handleEditChange(field, e.target.value)}
+                className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">Select</option>
+                <option value="OK">OK</option>
+                <option value="NFF">NFF</option>
+                <option value="SCRAP">SCRAP</option>
+                <option value="CRITICAL ISSUE">CRITICAL ISSUE</option>
+                <option value="PRODUCT PENDING">PRODUCT PENDING</option>
+              </select>
+            ) : type === 'select-testing' ? (
+              <select
+                value={currentValue || ''}
+                onChange={(e) => handleEditChange(field, e.target.value)}
+                className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">Select</option>
+                <option value="PASS">PASS</option>
+                <option value="FAIL">FAIL</option>
+              </select>
+            ) : type === 'textarea' ? (
+              <textarea
+                value={currentValue || ''}
+                onChange={(e) => handleEditChange(field, e.target.value)}
+                rows={2}
+                className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            ) : type === 'date' ? (
+              <input
+                type="date"
+                value={currentValue || ''}
+                onChange={(e) => handleEditChange(field, e.target.value)}
+                className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            ) : (
+              <input
+                type="text"
+                value={currentValue || ''}
+                onChange={(e) => handleEditChange(field, e.target.value)}
+                className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            )
+          ) : (
+            currentValue || <span className="text-gray-400 italic">—</span>
+          )}
+        </div>
       </div>
-      <div className="w-3/5 py-2.5 px-4 text-sm text-gray-900">
-        {value || <span className="text-gray-400 italic">—</span>}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="bg-white rounded-md shadow-sm flex flex-col h-full">
       <div className="flex justify-between items-center mb-1">
         <h2 className="text-lg font-bold text-gray-800">🔍 Search PCB</h2>
-        {hasSearched && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClear}
-            className="flex items-center gap-1 text-sm"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            New Search
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {selectedDetails && !isEditing && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleStartEdit}
+              className="flex items-center gap-1 text-sm text-blue-600 border-blue-300 hover:bg-blue-50"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </Button>
+          )}
+          {isEditing && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex items-center gap-1 text-sm text-green-600 border-green-300 hover:bg-green-50"
+              >
+                <Save className="h-3.5 w-3.5" />
+                {isSaving ? 'Saving...' : 'Save'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCancelEdit}
+                className="flex items-center gap-1 text-sm text-red-600 border-red-300 hover:bg-red-50"
+              >
+                <X className="h-3.5 w-3.5" />
+                Cancel
+              </Button>
+            </>
+          )}
+          {hasSearched && !isEditing && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClear}
+              className="flex items-center gap-1 text-sm"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              New Search
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Search Section */}
@@ -367,6 +549,16 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
         </div>
       )}
 
+      {/* Edit Mode Banner */}
+      {isEditing && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+          <p className="text-sm text-blue-800">
+            <strong>Edit Mode:</strong> Modify the fields below and click <strong>Save</strong> to persist changes.
+            Fields in gray are read-only.
+          </p>
+        </div>
+      )}
+
       {/* PCB Details - Vertical Card Layout */}
       {selectedDetails && (
         <div className="flex-1 overflow-auto text-sm">
@@ -376,19 +568,19 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
               📋 Tag Entry Information
             </div>
             <div className="border border-gray-200 rounded-b-md overflow-hidden">
-              <DetailRow label="Sr No" value={selectedDetails.srNo} />
-              <DetailRow label="DC No" value={selectedDetails.dcNo} />
-              <DetailRow label="DC Date" value={selectedDetails.dcDate} />
-              <DetailRow label="Branch" value={selectedDetails.branch} />
-              <DetailRow label="BCCD Name" value={selectedDetails.bccdName} />
-              <DetailRow label="Product Description" value={selectedDetails.productDescription} />
-              <DetailRow label="Product Sr No" value={selectedDetails.productSrNo} />
-              <DetailRow label="Date of Purchase" value={selectedDetails.dateOfPurchase} />
-              <DetailRow label="Complaint No" value={selectedDetails.complaintNo} />
-              <DetailRow label="Part Code" value={selectedDetails.partCode} />
-              <DetailRow label="Nature of Defect" value={selectedDetails.natureOfDefect} />
-              <DetailRow label="Visiting Tech Name" value={selectedDetails.visitingTechName} />
-              <DetailRow label="Mfg Month/Year" value={selectedDetails.mfgMonthYear} />
+              <DetailRow label="Sr No" field="srNo" value={selectedDetails.srNo} />
+              <DetailRow label="DC No" field="dcNo" value={selectedDetails.dcNo} />
+              <DetailRow label="DC Date" field="dcDate" value={selectedDetails.dcDate} type="date" />
+              <DetailRow label="Branch" field="branch" value={selectedDetails.branch} />
+              <DetailRow label="BCCD Name" field="bccdName" value={selectedDetails.bccdName} />
+              <DetailRow label="Product Description" field="productDescription" value={selectedDetails.productDescription} />
+              <DetailRow label="Product Sr No" field="productSrNo" value={selectedDetails.productSrNo} />
+              <DetailRow label="Date of Purchase" field="dateOfPurchase" value={selectedDetails.dateOfPurchase} type="date" />
+              <DetailRow label="Complaint No" field="complaintNo" value={selectedDetails.complaintNo} />
+              <DetailRow label="Part Code" field="partCode" value={selectedDetails.partCode} />
+              <DetailRow label="Nature of Defect" field="natureOfDefect" value={selectedDetails.natureOfDefect} />
+              <DetailRow label="Visiting Tech Name" field="visitingTechName" value={selectedDetails.visitingTechName} />
+              <DetailRow label="Mfg Month/Year" field="mfgMonthYear" value={selectedDetails.mfgMonthYear} />
             </div>
           </div>
 
@@ -398,14 +590,15 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
               🔧 Consumption Information
             </div>
             <div className="border border-gray-200 rounded-b-md overflow-hidden">
-              <DetailRow label="Repair Date" value={selectedDetails.repairDate} />
-              <DetailRow label="Testing" value={selectedDetails.testing} />
-              <DetailRow label="Failure" value={selectedDetails.failure} />
-              <DetailRow label="Status" value={selectedDetails.status} />
-              <DetailRow label="PCB Sr No" value={selectedDetails.pcbSrNo} />
-              <DetailRow label="Analysis" value={selectedDetails.analysis} />
-              <DetailRow label="Component Change" value={selectedDetails.componentChange} />
-              <DetailRow label="Engineer Name" value={selectedDetails.enggName} />
+              <DetailRow label="Repair Date" field="repairDate" value={selectedDetails.repairDate} type="date" />
+              <DetailRow label="Testing" field="testing" value={selectedDetails.testing} type="select-testing" />
+              <DetailRow label="Failure" field="failure" value={selectedDetails.failure} />
+              <DetailRow label="Status" field="status" value={selectedDetails.status} type="select-status" />
+              <DetailRow label="PCB Sr No" field="pcbSrNo" value={selectedDetails.pcbSrNo} />
+              <DetailRow label="Analysis" field="analysis" value={selectedDetails.analysis} type="textarea" />
+              <DetailRow label="Component Change" field="componentChange" value={selectedDetails.componentChange} />
+              <DetailRow label="Engineer Name" field="enggName" value={selectedDetails.enggName} />
+              <DetailRow label="Remark" field="remark" value={selectedDetails.remark} />
             </div>
           </div>
 
@@ -415,8 +608,8 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
               📦 Dispatch Information
             </div>
             <div className="border border-gray-200 rounded-b-md overflow-hidden">
-              <DetailRow label="Dispatch Date" value={selectedDetails.dispatchDate} />
-              <DetailRow label="Dispatch Entry By" value={selectedDetails.dispatchEntryBy} />
+              <DetailRow label="Dispatch Date" field="dispatchDate" value={selectedDetails.dispatchDate} type="date" />
+              <DetailRow label="Dispatch Entry By" field="dispatchEntryBy" value={selectedDetails.dispatchEntryBy} />
             </div>
           </div>
 
@@ -426,10 +619,10 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
               ℹ️ Entry Metadata
             </div>
             <div className="border border-gray-200 rounded-b-md overflow-hidden">
-              <DetailRow label="Tag Entry By" value={selectedDetails.tagEntryBy} />
-              <DetailRow label="Consumption Entry By" value={selectedDetails.consumptionEntryBy} />
-              <DetailRow label="Created At" value={selectedDetails.createdAt} />
-              <DetailRow label="Updated At" value={selectedDetails.updatedAt} />
+              <DetailRow label="Tag Entry By" field="tagEntryBy" value={selectedDetails.tagEntryBy} />
+              <DetailRow label="Consumption Entry By" field="consumptionEntryBy" value={selectedDetails.consumptionEntryBy} />
+              <DetailRow label="Created At" field="createdAt" value={selectedDetails.createdAt} />
+              <DetailRow label="Updated At" field="updatedAt" value={selectedDetails.updatedAt} />
             </div>
           </div>
         </div>

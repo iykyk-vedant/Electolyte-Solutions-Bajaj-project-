@@ -204,6 +204,29 @@ export async function initializeDatabase() {
       )
     `);
 
+    // Migration: Add remark column to consolidated_data if it doesn't exist
+    try {
+      await pool.query(`ALTER TABLE consolidated_data ADD COLUMN IF NOT EXISTS remark TEXT;`);
+      console.log('Remark column migration applied (or already exists)');
+    } catch (remarkError) {
+      console.log('Remark column migration attempted - may already exist');
+    }
+
+    // Migration: Set status='SCRAP' for existing bulk scrap entries that have no status
+    try {
+      const scrapResult = await pool.query(`
+        UPDATE consolidated_data
+        SET status = 'SCRAP'
+        WHERE product_sr_no LIKE 'SCRAP-%'
+          AND (status IS NULL OR status = '')
+      `);
+      if ((scrapResult.rowCount || 0) > 0) {
+        console.log(`Migrated ${scrapResult.rowCount} existing scrap entries to status=SCRAP`);
+      }
+    } catch (scrapMigrationError) {
+      console.log('Scrap status migration attempted');
+    }
+
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Error initializing database:', error);
@@ -448,6 +471,13 @@ export async function updateConsolidatedDataEntryByProductSrNo(productSrNo: stri
     } else if (entry.dispatch_entry_by !== undefined && entry.dispatch_entry_by !== null) {
       updates.push(`dispatch_entry_by = $${paramCount}`);
       values.push(entry.dispatch_entry_by);
+      paramCount++;
+    }
+
+    // Handle remark field
+    if (entry.remark !== undefined) {
+      updates.push(`remark = $${paramCount}`);
+      values.push(entry.remark);
       paramCount++;
     }
 
@@ -954,7 +984,7 @@ export async function bulkCreateScrapEntries(
       const pcbSrNo = generatePcbNumberServer(partCode, currentSrNo);
 
       valuesList.push(
-        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, $${paramIndex + 12}, $${paramIndex + 13})`
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, $${paramIndex + 12}, $${paramIndex + 13}, $${paramIndex + 14})`
       );
       params.push(
         currentSrNo,       // sr_no
@@ -970,16 +1000,17 @@ export async function bulkCreateScrapEntries(
         pcbSrNo,           // pcb_sr_no
         tagEntryBy,        // tag_entry_by
         'NA',              // engg_name
-        'NA'               // mfg_month_year
+        'NA',              // mfg_month_year
+        'SCRAP'            // status
       );
-      paramIndex += 14;
+      paramIndex += 15;
     }
 
     const query = `
       INSERT INTO consolidated_data 
       (sr_no, dc_no, branch, bccd_name, product_description, product_sr_no, 
        complaint_no, part_code, defect, visiting_tech_name, pcb_sr_no, 
-       tag_entry_by, engg_name, mfg_month_year)
+       tag_entry_by, engg_name, mfg_month_year, status)
       VALUES ${valuesList.join(', ')}
     `;
 
@@ -1224,6 +1255,13 @@ export async function updateConsolidatedDataEntry(id: string, entry: any): Promi
       const dispatchDateValue = convertToPostgresDate(entry.dispatch_date);
       updates.push(`dispatch_date = $${paramCount}`);
       values.push(dispatchDateValue);
+      paramCount++;
+    }
+
+    // Handle remark field
+    if (entry.remark !== undefined) {
+      updates.push(`remark = $${paramCount}`);
+      values.push(entry.remark);
       paramCount++;
     }
 
@@ -1747,5 +1785,102 @@ export async function getEntryCountsByDcNumber(date?: string): Promise<{
   } catch (error) {
     console.error('Error fetching entry counts by DC number:', error);
     return { rows: [], totalTag: 0, totalConsumption: 0 };
+  }
+}
+
+// Bulk insert consolidated data entries (for Excel Upload feature)
+export async function bulkInsertConsolidatedDataEntries(
+  rows: any[]
+): Promise<{ success: boolean; insertedCount?: number; error?: string }> {
+  if (rows.length === 0) {
+    return { success: true, insertedCount: 0 };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(1)');
+
+    // Get the current max SR No for the current month
+    const seqResult = await client.query(`
+      SELECT COALESCE(MAX(CAST(sr_no AS INTEGER)), 0) AS max_sr_no
+      FROM consolidated_data
+      WHERE sr_no ~ '^[0-9]+$'
+        AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_TIMESTAMP)
+    `);
+    let currentSrNo = (seqResult.rows[0]?.max_sr_no ?? 0) + 1;
+
+    let totalInserted = 0;
+    const CHUNK_SIZE = 50;
+
+    for (let c = 0; c < rows.length; c += CHUNK_SIZE) {
+      const chunk = rows.slice(c, c + CHUNK_SIZE);
+      const valuesList: string[] = [];
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      for (const row of chunk) {
+        const assignedSrNo = String(currentSrNo).padStart(4, '0');
+        const partCode = row.part_code || row.partCode || '';
+        const pcbSrNo = row.pcb_sr_no || row.pcbSrNo || (partCode ? generatePcbNumberServer(partCode, assignedSrNo) : '');
+
+        valuesList.push(
+          `($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7}, $${paramIndex+8}, $${paramIndex+9}, $${paramIndex+10}, $${paramIndex+11}, $${paramIndex+12}, $${paramIndex+13}, $${paramIndex+14}, $${paramIndex+15}, $${paramIndex+16}, $${paramIndex+17}, $${paramIndex+18}, $${paramIndex+19}, $${paramIndex+20}, $${paramIndex+21}, $${paramIndex+22}, $${paramIndex+23}, $${paramIndex+24}, $${paramIndex+25})`
+        );
+        params.push(
+          assignedSrNo,
+          row.dc_no || row.dcNo || '',
+          convertToPostgresDate(row.dc_date || row.dcDate),
+          row.branch || '',
+          row.bccd_name || row.bccdName || '',
+          row.product_description || row.productDescription || '',
+          row.product_sr_no || row.productSrNo || '',
+          convertToPostgresDate(row.date_of_purchase || row.dateOfPurchase),
+          row.complaint_no || row.complaintNo || '',
+          partCode,
+          row.defect || row.natureOfDefect || '',
+          row.visiting_tech_name || row.visitingTechName || '',
+          row.mfg_month_year || row.mfgMonthYear || '',
+          convertToPostgresDate(row.repair_date || row.repairDate),
+          row.testing || '',
+          row.failure || '',
+          row.status || '',
+          pcbSrNo,
+          row.analysis || '',
+          row.component_change || row.componentChange || '',
+          row.engg_name || row.enggName || '',
+          row.tag_entry_by || row.tagEntryBy || '',
+          row.consumption_entry_by || row.consumptionEntryBy || '',
+          row.dispatch_entry_by || row.dispatchEntryBy || '',
+          convertToPostgresDate(row.dispatch_date || row.dispatchDate),
+          row.remark || ''
+        );
+        paramIndex += 26;
+        currentSrNo++;
+      }
+
+      const query = `
+        INSERT INTO consolidated_data
+        (sr_no, dc_no, dc_date, branch, bccd_name, product_description, product_sr_no,
+         date_of_purchase, complaint_no, part_code, defect, visiting_tech_name, mfg_month_year,
+         repair_date, testing, failure, status, pcb_sr_no, analysis,
+         component_change, engg_name, tag_entry_by, consumption_entry_by, dispatch_entry_by,
+         dispatch_date, remark)
+        VALUES ${valuesList.join(', ')}
+      `;
+
+      const result = await client.query(query, params);
+      totalInserted += result.rowCount || 0;
+    }
+
+    await client.query('COMMIT');
+    console.log(`Bulk insert complete: ${totalInserted} rows inserted`);
+    return { success: true, insertedCount: totalInserted };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error bulk inserting consolidated data entries:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  } finally {
+    client.release();
   }
 }

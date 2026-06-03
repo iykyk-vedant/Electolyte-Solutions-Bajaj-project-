@@ -33,6 +33,7 @@ interface ConsumptionEntry {
   consumptionEntryBy?: string;
   dispatchDate: string;
   validationResult?: string;
+  remark?: string;
 }
 
 interface TagEntry {
@@ -80,6 +81,7 @@ interface TableRow {
   tagEntryBy?: string;
   consumptionEntryBy?: string;
   dispatchEntryBy?: string;
+  remark?: string;
 }
 
 export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {}, engineerName = '', onEngineerNameChange }: ConsumptionTabProps) {
@@ -104,6 +106,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
     enggName: engineerName || '',
     dispatchDate: '',
     validationResult: '',
+    remark: '',
   });
 
   // Debug effect to log form data changes
@@ -208,6 +211,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
           tagEntryBy: entry.tag_entry_by || '',
           consumptionEntryBy: entry.consumption_entry_by || '',
           dispatchEntryBy: entry.dispatch_entry_by || '',
+          remark: entry.remark || '',
         }));
 
         setTableData(tableRows);
@@ -548,6 +552,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
         consumptionEntryBy: user?.name || user?.email || '',
         tagEntryBy: targetEntry.tagEntryBy || targetEntry.tag_entry_by || user?.name || user?.email || '',
         validationResult: validationResult,
+        remark: formData.remark || '',
       });
 
       console.log('handleConsume - Update result:', updateResult);
@@ -649,6 +654,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
         consumptionEntryBy: user?.name || user?.email || '',
         tagEntryBy: targetEntry.tagEntryBy || targetEntry.tag_entry_by || '',
         validationResult: validationResult,
+        remark: formData.remark || '',
       });
 
       if (!updateResult.success) {
@@ -769,6 +775,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
       enggName: engineerName || '',
       dispatchDate: '',
       validationResult: '',
+      remark: '',
     });
 
     // Reset workflow state
@@ -1031,6 +1038,8 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
                 <option value="OK">OK</option>
                 <option value="NFF">NFF</option>
                 <option value="SCRAP">SCRAP</option>
+                <option value="CRITICAL ISSUE">CRITICAL ISSUE</option>
+                <option value="PRODUCT PENDING">PRODUCT PENDING</option>
               </select>
             </div>
             <div>
@@ -1048,6 +1057,18 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
                 value={user?.name || user?.email || ''}
                 readOnly
                 className="w-full p-1 text-sm border border-gray-300 rounded h-8 bg-gray-100"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Remark:</label>
+              <input
+                type="text"
+                name="remark"
+                value={formData.remark || ''}
+                onChange={handleChange}
+                className="w-full p-1 text-sm border border-gray-300 rounded h-8"
+                placeholder="Enter remark"
+                disabled={!isPcbFound}
               />
             </div>
 
@@ -1142,6 +1163,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
                   <th className="px-2 py-1 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Tag Entry By</th>
                   <th className="px-2 py-1 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Consumption Entry By</th>
                   <th className="px-2 py-1 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Dispatch Entry By</th>
+                  <th className="px-2 py-1 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Remark</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -1195,6 +1217,7 @@ export function ConsumptionTab({ dcNumbers = ['DC001', 'DC002'], dcPartCodes = {
                     <td className="px-2 py-1 whitespace-nowrap text-sm text-gray-800">{entry.tagEntryBy}</td>
                     <td className="px-2 py-1 whitespace-nowrap text-sm text-gray-800">{entry.consumptionEntryBy}</td>
                     <td className="px-2 py-1 whitespace-nowrap text-sm text-gray-800">{entry.dispatchEntryBy}</td>
+                    <td className="px-2 py-1 whitespace-nowrap text-sm text-gray-800">{entry.remark}</td>
                   </tr>
                 ))}
                 {tableData.length === 0 && (
