@@ -984,7 +984,7 @@ export async function bulkCreateScrapEntries(
       const pcbSrNo = generatePcbNumberServer(partCode, currentSrNo);
 
       valuesList.push(
-        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, $${paramIndex + 12}, $${paramIndex + 13}, $${paramIndex + 14})`
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10}, $${paramIndex + 11}, $${paramIndex + 12}, $${paramIndex + 13}, $${paramIndex + 14}, $${paramIndex + 15}, $${paramIndex + 16}, $${paramIndex + 17})`
       );
       params.push(
         currentSrNo,       // sr_no
@@ -1001,16 +1001,20 @@ export async function bulkCreateScrapEntries(
         tagEntryBy,        // tag_entry_by
         'NA',              // engg_name
         'NA',              // mfg_month_year
-        'SCRAP'            // status
+        'SCRAP',           // status
+        'NA',              // consumption_entry_by
+        'NA',              // dispatch_entry_by
+        'NA'               // dispatch_date
       );
-      paramIndex += 15;
+      paramIndex += 18;
     }
 
     const query = `
       INSERT INTO consolidated_data 
       (sr_no, dc_no, branch, bccd_name, product_description, product_sr_no, 
        complaint_no, part_code, defect, visiting_tech_name, pcb_sr_no, 
-       tag_entry_by, engg_name, mfg_month_year, status)
+       tag_entry_by, engg_name, mfg_month_year, status,
+       consumption_entry_by, dispatch_entry_by, dispatch_date)
       VALUES ${valuesList.join(', ')}
     `;
 

@@ -109,6 +109,89 @@ function mapEntryToDetails(entry: any): PCBDetails {
   };
 }
 
+// Standalone DetailRow component — defined outside SearchPCBTab to prevent
+// React from re-creating the component on every parent render, which would
+// unmount/remount inputs and break typing in edit mode.
+function DetailRow({
+  label,
+  field,
+  value,
+  type = 'text',
+  isEditing,
+  editData,
+  onEditChange,
+}: {
+  label: string;
+  field: keyof PCBDetails;
+  value: string;
+  type?: string;
+  isEditing: boolean;
+  editData: PCBDetails | null;
+  onEditChange: (field: keyof PCBDetails, value: string) => void;
+}) {
+  const isFieldEditable = isEditing && !NON_EDITABLE_FIELDS.has(field);
+  const currentValue = isEditing && editData ? editData[field] : value;
+
+  return (
+    <div className="flex border-b border-gray-100 last:border-b-0">
+      <div className="w-2/5 py-2.5 px-4 bg-gray-50 text-sm font-medium text-gray-600 border-r border-gray-100">
+        {label}
+      </div>
+      <div className="w-3/5 py-2.5 px-4 text-sm text-gray-900">
+        {isFieldEditable ? (
+          type === 'select-status' ? (
+            <select
+              value={currentValue || ''}
+              onChange={(e) => onEditChange(field, e.target.value)}
+              className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Select</option>
+              <option value="OK">OK</option>
+              <option value="NFF">NFF</option>
+              <option value="SCRAP">SCRAP</option>
+              <option value="CRITICAL ISSUE">CRITICAL ISSUE</option>
+              <option value="PRODUCT PENDING">PRODUCT PENDING</option>
+            </select>
+          ) : type === 'select-testing' ? (
+            <select
+              value={currentValue || ''}
+              onChange={(e) => onEditChange(field, e.target.value)}
+              className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Select</option>
+              <option value="PASS">PASS</option>
+              <option value="FAIL">FAIL</option>
+            </select>
+          ) : type === 'textarea' ? (
+            <textarea
+              value={currentValue || ''}
+              onChange={(e) => onEditChange(field, e.target.value)}
+              rows={2}
+              className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          ) : type === 'date' ? (
+            <input
+              type="date"
+              value={currentValue || ''}
+              onChange={(e) => onEditChange(field, e.target.value)}
+              className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          ) : (
+            <input
+              type="text"
+              value={currentValue || ''}
+              onChange={(e) => onEditChange(field, e.target.value)}
+              className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          )
+        ) : (
+          currentValue || <span className="text-gray-400 italic">—</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabProps) {
   const { isDcLocked } = useLockStore();
   const { toast } = useToast();
@@ -311,71 +394,6 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
     }
   }, [partCode, mfgMonthYear, srNo]);
 
-  // Detail row component - supports read and edit modes
-  const DetailRow = ({ label, field, value, type = 'text' }: { label: string; field: keyof PCBDetails; value: string; type?: string }) => {
-    const isFieldEditable = isEditing && !NON_EDITABLE_FIELDS.has(field);
-    const currentValue = isEditing && editData ? editData[field] : value;
-
-    return (
-      <div className="flex border-b border-gray-100 last:border-b-0">
-        <div className="w-2/5 py-2.5 px-4 bg-gray-50 text-sm font-medium text-gray-600 border-r border-gray-100">
-          {label}
-        </div>
-        <div className="w-3/5 py-2.5 px-4 text-sm text-gray-900">
-          {isFieldEditable ? (
-            type === 'select-status' ? (
-              <select
-                value={currentValue || ''}
-                onChange={(e) => handleEditChange(field, e.target.value)}
-                className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">Select</option>
-                <option value="OK">OK</option>
-                <option value="NFF">NFF</option>
-                <option value="SCRAP">SCRAP</option>
-                <option value="CRITICAL ISSUE">CRITICAL ISSUE</option>
-                <option value="PRODUCT PENDING">PRODUCT PENDING</option>
-              </select>
-            ) : type === 'select-testing' ? (
-              <select
-                value={currentValue || ''}
-                onChange={(e) => handleEditChange(field, e.target.value)}
-                className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">Select</option>
-                <option value="PASS">PASS</option>
-                <option value="FAIL">FAIL</option>
-              </select>
-            ) : type === 'textarea' ? (
-              <textarea
-                value={currentValue || ''}
-                onChange={(e) => handleEditChange(field, e.target.value)}
-                rows={2}
-                className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            ) : type === 'date' ? (
-              <input
-                type="date"
-                value={currentValue || ''}
-                onChange={(e) => handleEditChange(field, e.target.value)}
-                className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            ) : (
-              <input
-                type="text"
-                value={currentValue || ''}
-                onChange={(e) => handleEditChange(field, e.target.value)}
-                className="w-full p-1 text-sm border border-blue-300 rounded bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            )
-          ) : (
-            currentValue || <span className="text-gray-400 italic">—</span>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="bg-white rounded-md shadow-sm flex flex-col h-full">
       <div className="flex justify-between items-center mb-1">
@@ -568,19 +586,19 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
               📋 Tag Entry Information
             </div>
             <div className="border border-gray-200 rounded-b-md overflow-hidden">
-              <DetailRow label="Sr No" field="srNo" value={selectedDetails.srNo} />
-              <DetailRow label="DC No" field="dcNo" value={selectedDetails.dcNo} />
-              <DetailRow label="DC Date" field="dcDate" value={selectedDetails.dcDate} type="date" />
-              <DetailRow label="Branch" field="branch" value={selectedDetails.branch} />
-              <DetailRow label="BCCD Name" field="bccdName" value={selectedDetails.bccdName} />
-              <DetailRow label="Product Description" field="productDescription" value={selectedDetails.productDescription} />
-              <DetailRow label="Product Sr No" field="productSrNo" value={selectedDetails.productSrNo} />
-              <DetailRow label="Date of Purchase" field="dateOfPurchase" value={selectedDetails.dateOfPurchase} type="date" />
-              <DetailRow label="Complaint No" field="complaintNo" value={selectedDetails.complaintNo} />
-              <DetailRow label="Part Code" field="partCode" value={selectedDetails.partCode} />
-              <DetailRow label="Nature of Defect" field="natureOfDefect" value={selectedDetails.natureOfDefect} />
-              <DetailRow label="Visiting Tech Name" field="visitingTechName" value={selectedDetails.visitingTechName} />
-              <DetailRow label="Mfg Month/Year" field="mfgMonthYear" value={selectedDetails.mfgMonthYear} />
+              <DetailRow label="Sr No" field="srNo" value={selectedDetails.srNo} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="DC No" field="dcNo" value={selectedDetails.dcNo} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="DC Date" field="dcDate" value={selectedDetails.dcDate} type="date" isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Branch" field="branch" value={selectedDetails.branch} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="BCCD Name" field="bccdName" value={selectedDetails.bccdName} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Product Description" field="productDescription" value={selectedDetails.productDescription} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Product Sr No" field="productSrNo" value={selectedDetails.productSrNo} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Date of Purchase" field="dateOfPurchase" value={selectedDetails.dateOfPurchase} type="date" isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Complaint No" field="complaintNo" value={selectedDetails.complaintNo} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Part Code" field="partCode" value={selectedDetails.partCode} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Nature of Defect" field="natureOfDefect" value={selectedDetails.natureOfDefect} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Visiting Tech Name" field="visitingTechName" value={selectedDetails.visitingTechName} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Mfg Month/Year" field="mfgMonthYear" value={selectedDetails.mfgMonthYear} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
             </div>
           </div>
 
@@ -590,15 +608,15 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
               🔧 Consumption Information
             </div>
             <div className="border border-gray-200 rounded-b-md overflow-hidden">
-              <DetailRow label="Repair Date" field="repairDate" value={selectedDetails.repairDate} type="date" />
-              <DetailRow label="Testing" field="testing" value={selectedDetails.testing} type="select-testing" />
-              <DetailRow label="Failure" field="failure" value={selectedDetails.failure} />
-              <DetailRow label="Status" field="status" value={selectedDetails.status} type="select-status" />
-              <DetailRow label="PCB Sr No" field="pcbSrNo" value={selectedDetails.pcbSrNo} />
-              <DetailRow label="Analysis" field="analysis" value={selectedDetails.analysis} type="textarea" />
-              <DetailRow label="Component Change" field="componentChange" value={selectedDetails.componentChange} />
-              <DetailRow label="Engineer Name" field="enggName" value={selectedDetails.enggName} />
-              <DetailRow label="Remark" field="remark" value={selectedDetails.remark} />
+              <DetailRow label="Repair Date" field="repairDate" value={selectedDetails.repairDate} type="date" isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Testing" field="testing" value={selectedDetails.testing} type="select-testing" isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Failure" field="failure" value={selectedDetails.failure} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Status" field="status" value={selectedDetails.status} type="select-status" isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="PCB Sr No" field="pcbSrNo" value={selectedDetails.pcbSrNo} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Analysis" field="analysis" value={selectedDetails.analysis} type="textarea" isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Component Change" field="componentChange" value={selectedDetails.componentChange} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Engineer Name" field="enggName" value={selectedDetails.enggName} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Remark" field="remark" value={selectedDetails.remark} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
             </div>
           </div>
 
@@ -608,8 +626,8 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
               📦 Dispatch Information
             </div>
             <div className="border border-gray-200 rounded-b-md overflow-hidden">
-              <DetailRow label="Dispatch Date" field="dispatchDate" value={selectedDetails.dispatchDate} type="date" />
-              <DetailRow label="Dispatch Entry By" field="dispatchEntryBy" value={selectedDetails.dispatchEntryBy} />
+              <DetailRow label="Dispatch Date" field="dispatchDate" value={selectedDetails.dispatchDate} type="date" isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Dispatch Entry By" field="dispatchEntryBy" value={selectedDetails.dispatchEntryBy} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
             </div>
           </div>
 
@@ -619,10 +637,10 @@ export function SearchPCBTab({ dcNumbers = [], dcPartCodes = {} }: SearchPCBTabP
               ℹ️ Entry Metadata
             </div>
             <div className="border border-gray-200 rounded-b-md overflow-hidden">
-              <DetailRow label="Tag Entry By" field="tagEntryBy" value={selectedDetails.tagEntryBy} />
-              <DetailRow label="Consumption Entry By" field="consumptionEntryBy" value={selectedDetails.consumptionEntryBy} />
-              <DetailRow label="Created At" field="createdAt" value={selectedDetails.createdAt} />
-              <DetailRow label="Updated At" field="updatedAt" value={selectedDetails.updatedAt} />
+              <DetailRow label="Tag Entry By" field="tagEntryBy" value={selectedDetails.tagEntryBy} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Consumption Entry By" field="consumptionEntryBy" value={selectedDetails.consumptionEntryBy} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Created At" field="createdAt" value={selectedDetails.createdAt} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
+              <DetailRow label="Updated At" field="updatedAt" value={selectedDetails.updatedAt} isEditing={isEditing} editData={editData} onEditChange={handleEditChange} />
             </div>
           </div>
         </div>

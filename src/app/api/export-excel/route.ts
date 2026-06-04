@@ -7,13 +7,21 @@ import { getAllConsolidatedDataEntries, getConsolidatedDataEntriesByDcNo } from 
  *
  * Exports consolidated_data entries to Excel.
  * Queries the database directly on the server side to avoid body size limits.
- * The Excel columns match the DB schema exactly — no renaming, no mapping.
- * Entries are sorted by part_code ASC, then sr_no ASC (numeric).
+ *
+ * Column order (29 columns):
+ *   sheet_number (row index), sr_no, dc_no, dc_date, branch, bccd_name,
+ *   product_description, product_sr_no, date_of_purchase, complaint_no,
+ *   part_code, defect, visiting_tech_name, mfg_month_year, tag_entry_date,
+ *   repair_date, testing, failure, status, pcb_sr_no, analysis,
+ *   component_change, engg_name, tag_entry_by, consumption_entry_by,
+ *   remark, consumption_date, dispatch_entry_by, dispatch_date
+ *
+ * Entries are sorted by pcb_sr_no ASC.
  */
 
-// DB columns in the exact order they appear in the consolidated_data table
-const DB_COLUMNS = [
-  'id',
+// Excel column headers in the desired order
+const EXCEL_HEADERS = [
+  'sheet_number',
   'sr_no',
   'dc_no',
   'dc_date',
@@ -27,6 +35,7 @@ const DB_COLUMNS = [
   'defect',
   'visiting_tech_name',
   'mfg_month_year',
+  'tag_entry_date',
   'repair_date',
   'testing',
   'failure',
@@ -37,18 +46,32 @@ const DB_COLUMNS = [
   'engg_name',
   'tag_entry_by',
   'consumption_entry_by',
+  'remark',
+  'consumption_date',
   'dispatch_entry_by',
   'dispatch_date',
-  'created_at',
-  'updated_at',
 ];
+
+// Mapping from Excel header → actual DB column name (only for renamed/computed columns)
+const HEADER_TO_DB: Record<string, string> = {
+  tag_entry_date: 'created_at',
+  consumption_date: 'updated_at',
+};
+
+/** Format a value that might be a Date or ISO string to YYYY-MM-DD */
+function formatDateValue(val: any): string {
+  if (val === null || val === undefined) return '';
+  if (val instanceof Date) return val.toISOString().split('T')[0];
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val)) return val.split('T')[0];
+  return String(val);
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { dcNo } = body;
 
-    // Query database directly on the server — no need to receive entries from the client
+    // Query database directly on the server
     let entries: any[];
     if (dcNo) {
       entries = await getConsolidatedDataEntriesByDcNo(dcNo);
@@ -60,23 +83,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No entries to export' }, { status: 400 });
     }
 
-    // Sort: part_code ASC, then sr_no ASC (numeric)
+    // Sort by pcb_sr_no ascending (string sort)
     const sortedEntries = [...entries].sort((a: any, b: any) => {
-      const partA = (a.part_code || '').toString().toLowerCase();
-      const partB = (b.part_code || '').toString().toLowerCase();
-      if (partA < partB) return -1;
-      if (partA > partB) return 1;
-      const srA = parseInt(a.sr_no || '0', 10);
-      const srB = parseInt(b.sr_no || '0', 10);
-      return srA - srB;
+      const pcbA = (a.pcb_sr_no || '').toString();
+      const pcbB = (b.pcb_sr_no || '').toString();
+      return pcbA.localeCompare(pcbB);
     });
 
     // Create workbook & worksheet
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('consolidated_data');
 
-    // Header row — exact DB column names
-    const headerRow = worksheet.addRow(DB_COLUMNS);
+    // Header row
+    const headerRow = worksheet.addRow(EXCEL_HEADERS);
     headerRow.eachCell((cell) => {
       cell.font = { name: 'Calibri', size: 11, bold: true };
       cell.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -93,19 +112,32 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    // Data rows — write each DB column value as-is
-    sortedEntries.forEach((entry: any) => {
-      const rowValues = DB_COLUMNS.map((col) => {
-        const val = entry[col];
+    // Date columns that need formatting
+    const DATE_COLUMNS = new Set([
+      'dc_date', 'date_of_purchase', 'repair_date', 'dispatch_date',
+      'tag_entry_date', 'consumption_date',
+    ]);
+
+    // Data rows
+    sortedEntries.forEach((entry: any, index: number) => {
+      const rowValues = EXCEL_HEADERS.map((header) => {
+        // sheet_number is just the 1-based row index
+        if (header === 'sheet_number') return index + 1;
+
+        // Resolve the actual DB column name
+        const dbCol = HEADER_TO_DB[header] || header;
+        const val = entry[dbCol];
+
         if (val === null || val === undefined) return '';
-        // Format Date objects to readable string
-        if (val instanceof Date) {
-          return val.toISOString().split('T')[0]; // YYYY-MM-DD
-        }
-        // If it looks like a date string from Postgres (with T and timezone), trim it
+
+        // Format dates
+        if (DATE_COLUMNS.has(header)) return formatDateValue(val);
+
+        // If it looks like a date string from Postgres, trim it
         if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
           return val.split('T')[0];
         }
+
         return val;
       });
 
@@ -136,7 +168,8 @@ export async function POST(request: NextRequest) {
 
     // AutoFilter
     if (sortedEntries.length > 0) {
-      worksheet.autoFilter = `A1:${String.fromCharCode(64 + DB_COLUMNS.length)}${sortedEntries.length + 1}`;
+      const lastColLetter = String.fromCharCode(64 + EXCEL_HEADERS.length);
+      worksheet.autoFilter = `A1:${lastColLetter}${sortedEntries.length + 1}`;
     }
 
     // Generate buffer
